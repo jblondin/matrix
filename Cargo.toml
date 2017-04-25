@@ -1,0 +1,8 @@
+[package]
+name = "matrix"
+version = "0.1.0"
+authors = ["Jamie Blondin <jblondin@gmail.com>"]
+
+[dependencies]
+blas = { version = "0.15" }
+num = "*"
