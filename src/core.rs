@@ -111,7 +111,7 @@ impl Matrix {
         }
     }
 
-    fn get(&self, r: usize, c: usize) -> Result<f64> {
+    pub fn get(&self, r: usize, c: usize) -> Result<f64> {
         let index = match self.transposed {
             Transpose::Yes  => { self.trindex(c * self.nrows() + r) }
             Transpose::No   => { c * self.nrows() + r }
@@ -125,8 +125,6 @@ impl Matrix {
         (index % self.nrows()) * self.ncols()
             + (index as f32 / self.nrows() as f32).floor() as usize
     }
-
-
 }
 
 pub struct MatrixIter<'a> {
