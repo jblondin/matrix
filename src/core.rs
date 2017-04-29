@@ -120,6 +120,49 @@ impl Matrix {
             .ok_or(Error::from_kind(ErrorKind::IndexError("index out of bounds")))
     }
 
+    pub fn hcat(&self, other: &Matrix) -> Matrix {
+        assert_eq!(self.nrows(), other.nrows());
+
+        // use the iterators instead of direct access to the data vectors so transposition is
+        // handled properly
+        let mut data_vec: Vec<f64> = self.iter().collect();
+        data_vec.append(&mut other.iter().collect());
+
+        assert_eq!(data_vec.len(), self.nrows() * (self.ncols() + other.ncols()));
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(data_vec),
+                rows: self.nrows(),
+                cols: self.ncols() + other.ncols(),
+            }),
+            transposed: Transpose::No,
+        }
+    }
+    pub fn vcat(&self, other: &Matrix) -> Matrix {
+        assert_eq!(self.ncols(), other.ncols());
+
+        let mut data_vec: Vec<f64> = Vec::new();
+
+        for c in 0..self.ncols() {
+            for r in 0..self.nrows() {
+                data_vec.push(self.get(r, c).unwrap());
+            }
+            for r in 0..other.nrows() {
+                data_vec.push(other.get(r, c).unwrap());
+            }
+        }
+
+        assert_eq!(data_vec.len(), (self.nrows() + other.nrows()) * self.ncols());
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(data_vec),
+                rows: self.nrows() + other.nrows(),
+                cols: self.ncols(),
+            }),
+            transposed: Transpose::No,
+        }
+    }
+
     #[inline]
     fn trindex(&self, index: usize) -> usize {
         (index % self.nrows()) * self.ncols()
@@ -369,6 +412,64 @@ mod tests {
         assert_eq!(a.dims(), (m, n));
         assert_eq!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 0.0);
         assert_eq!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)), 0.0);
+    }
+
+    #[test]
+    fn test_hcat() {
+        let (m1, n1) = (2, 3);
+        let a = Matrix::ones(m1, n1);
+        let (m2, n2) = (2, 2);
+        let b = Matrix::zeros(m2, n2);
+
+        let c = a.hcat(&b);
+        assert_eq!(c.dims(), (2, 5));
+        assert_eq!(c.get(0, 2).unwrap(), 1.0);
+        assert_eq!(c.get(1, 1).unwrap(), 1.0);
+        assert_eq!(c.get(0, 3).unwrap(), 0.0);
+        assert_eq!(c.get(1, 4).unwrap(), 0.0);
+
+        let (m1, n1) = (3, 2);
+        let at = Matrix::ones(m1, n1).t();
+
+        let c = at.hcat(&b);
+        assert_eq!(c.dims(), (2, 5));
+        assert_eq!(c.get(0, 2).unwrap(), 1.0);
+        assert_eq!(c.get(1, 1).unwrap(), 1.0);
+        assert_eq!(c.get(0, 3).unwrap(), 0.0);
+        assert_eq!(c.get(1, 4).unwrap(), 0.0);
+
+        let (m2, n2) = (4, 2);
+        let bt = Matrix::zeros(m2, n2).t();
+
+        let c = at.hcat(&bt);
+        assert_eq!(c.dims(), (2, 7));
+        assert_eq!(c.get(0, 2).unwrap(), 1.0);
+        assert_eq!(c.get(1, 1).unwrap(), 1.0);
+        assert_eq!(c.get(0, 5).unwrap(), 0.0);
+        assert_eq!(c.get(1, 6).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_vcat() {
+        let (m1, n1) = (2, 3);
+        let a = Matrix::from_vec(vec![1.0, 2.0, 4.0, 5.0, 7.0, 8.0], m1, n1);
+        let (m2, n2) = (1, 3);
+        let b = Matrix::from_vec(vec![3.0, 6.0, 9.0], m2, n2);
+        let c = a.vcat(&b);
+        assert_eq!(c.dims(), (3, 3));
+        assert_eq!(*c.data.values.borrow(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+
+        let (m1, n1) = (3, 2);
+        let at = Matrix::from_vec(vec![1.0, 4.0, 7.0, 2.0, 5.0, 8.0], m1, n1).t();
+        let c = at.vcat(&b);
+        assert_eq!(c.dims(), (3, 3));
+        assert_eq!(*c.data.values.borrow(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+
+        let (m2, n2) = (3, 1);
+        let bt = Matrix::from_vec(vec![3.0, 6.0, 9.0], m2, n2).t();
+        let c = a.vcat(&bt);
+        assert_eq!(c.dims(), (3, 3));
+        assert_eq!(*c.data.values.borrow(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
     }
 
     #[test]
