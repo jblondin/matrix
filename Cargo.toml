@@ -6,3 +6,4 @@ authors = ["Jamie Blondin <jblondin@gmail.com>"]
 [dependencies]
 blas = { version = "0.15" }
 num = "*"
+error-chain = "*"
