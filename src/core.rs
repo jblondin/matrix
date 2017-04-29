@@ -1,8 +1,11 @@
-use std::ops::{Add, Mul, Sub, Neg};
+use std::f64;
+use std::ops::{Add, Mul, Sub, Neg, Range, RangeTo, RangeFrom, RangeFull};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use blas::c::*;
+
+use errors::*;
 
 
 #[derive(Debug, Clone)]
@@ -88,6 +91,22 @@ impl Matrix {
         }
     }
 
+    fn get(&self, r: usize, c: usize) -> Result<f64> {
+        let index = match self.transposed {
+            Transpose::Yes  => { self.trindex(c * self.nrows() + r) }
+            Transpose::No   => { c * self.nrows() + r }
+        };
+        self.data.values.borrow().get(index).map(|&f| f)
+            .ok_or(Error::from_kind(ErrorKind::IndexError("index out of bounds")))
+    }
+
+    #[inline]
+    fn trindex(&self, index: usize) -> usize {
+        (index % self.nrows()) * self.ncols()
+            + (index as f32 / self.nrows() as f32).floor() as usize
+    }
+
+
 }
 
 pub struct MatrixIter<'a> {
@@ -105,9 +124,7 @@ impl<'a> Iterator for MatrixIter<'a> {
             }
             Transpose::Yes => {
                 // do conversion from one indexing style to other
-                self.mat.data.values.borrow().get(
-                    (self.index % self.mat.nrows()) * self.mat.ncols()
-                    + (self.index as f32 / self.mat.nrows() as f32).floor() as usize).cloned()
+                self.mat.data.values.borrow().get(self.mat.trindex(self.index)).cloned()
             }
         };
         self.index += 1;
@@ -239,6 +256,79 @@ implement_mul!(Matrix, &'a Matrix, 'a);
 implement_mul!(&'a Matrix, Matrix, 'a);
 implement_mul!(&'a Matrix, &'b Matrix, 'a, 'b);
 
+
+pub trait SubMatrix<R> {
+    type Output;
+
+    fn subm(&self, rng: R) -> Result<Self::Output>;
+}
+
+impl SubMatrix<Range<(usize, usize)>> for Matrix {
+    type Output = Matrix;
+
+    fn subm(&self, rng: Range<(usize, usize)>) -> Result<Matrix> {
+        let mut vec: Vec<f64> = Vec::new();
+
+        let (startr, startc) = rng.start;
+        let (endr, endc) = rng.end;
+
+        for r in startr..endr {
+            for c in startc..endc {
+                vec.push(self.get(r,c)?.clone());
+            }
+        }
+        Ok(Matrix::from_vec(vec, endr - startr, endc - startc))
+    }
+}
+impl SubMatrix<RangeTo<(usize, usize)>> for Matrix {
+    type Output = Matrix;
+
+    fn subm(&self, rng: RangeTo<(usize, usize)>) -> Result<Matrix> {
+        let mut vec: Vec<f64> = Vec::new();
+
+        let (endr, endc) = rng.end;
+
+        for r in 0..endr {
+            for c in 0..endc {
+                vec.push(self.get(r,c)?.clone());
+            }
+        }
+        Ok(Matrix::from_vec(vec, endr, endc))
+    }
+}
+impl SubMatrix<RangeFrom<(usize, usize)>> for Matrix {
+    type Output = Matrix;
+
+    fn subm(&self, rng: RangeFrom<(usize, usize)>) -> Result<Matrix> {
+        let mut vec: Vec<f64> = Vec::new();
+
+        let (startr, startc) = rng.start;
+
+        for r in startr..self.nrows() {
+            for c in startc..self.ncols() {
+                vec.push(self.get(r,c)?.clone());
+            }
+        }
+        Ok(Matrix::from_vec(vec, self.nrows() - startr, self.ncols() - startc))
+    }
+}
+impl SubMatrix<RangeFull> for Matrix {
+    type Output = Matrix;
+
+    fn subm(&self, _: RangeFull) -> Result<Matrix> {
+        let mut vec: Vec<f64> = Vec::new();
+
+        for r in 0..self.nrows() {
+            for c in 0..self.ncols() {
+                vec.push(self.get(r,c)?.clone());
+            }
+        }
+        Ok(Matrix::from_vec(vec, self.nrows(), self.ncols()))
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,8 +346,35 @@ mod tests {
 
         assert_eq!(a.dims(), (m, n));
         assert_eq!(b.dims(), (n, m));
+
+        assert_eq!(a.get(1, 2).unwrap(), 30.0);
+        assert_eq!(a.get(0, 4).unwrap(), 5.0);
+        assert_eq!(b.get(2, 1).unwrap(), 30.0);
+        assert_eq!(b.get(4, 0).unwrap(), 5.0);
     }
 
+    #[test]
+    fn test_subm() {
+        let (m, n) = (2,5);
+        let a = Matrix::from_vec(vec![1.0, 10.0, 2.0, 20.0, 3.0, 30.0, 4.0, 40.0, 5.0, 50.0], m, n);
+
+        let b = a.subm(Range { start: (0,0), end: (1,5) }).unwrap();
+        assert_eq!(b.dims(), (1,5));
+        assert_eq!(b.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 5.0);
+
+
+        let b = a.subm((0,0)..(1,5)).unwrap();
+        assert_eq!(b.dims(), (1,5));
+        assert_eq!(b.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 5.0);
+
+        let b = a.subm(..).unwrap();
+        assert_eq!(b.dims(), (2,5));
+
+        let b = a.subm((0,1)..(2,2)).unwrap();
+        assert_eq!(b.dims(), (2,1));
+        assert_eq!(b.get(0,0).unwrap(), 2.0);
+        assert_eq!(b.get(1,0).unwrap(), 20.0);
+    }
 
     #[test]
     fn test_gemv() {
