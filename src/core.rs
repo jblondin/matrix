@@ -55,6 +55,26 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    pub fn ones(nrows: usize, ncols: usize) -> Matrix {
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(vec![1.0; nrows * ncols]),
+                rows: nrows,
+                cols: ncols,
+            }),
+            transposed: Transpose::No,
+        }
+    }
+    pub fn zeros(nrows: usize, ncols: usize) -> Matrix {
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(vec![0.0; nrows * ncols]),
+                rows: nrows,
+                cols: ncols,
+            }),
+            transposed: Transpose::No,
+        }
+    }
 
     pub fn nrows(&self) -> usize {
         match self.transposed {
@@ -332,6 +352,26 @@ impl SubMatrix<RangeFull> for Matrix {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_ones() {
+        let (m,n) = (5, 10);
+        let a = Matrix::ones(m, n);
+
+        assert_eq!(a.dims(), (m, n));
+        assert_eq!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 1.0);
+        assert_eq!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)), 1.0);
+    }
+
+    #[test]
+    fn test_zeros() {
+        let (m,n) = (5, 10);
+        let a = Matrix::zeros(m, n);
+
+        assert_eq!(a.dims(), (m, n));
+        assert_eq!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 0.0);
+        assert_eq!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)), 0.0);
+    }
 
     #[test]
     fn test_transpose() {
