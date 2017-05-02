@@ -107,7 +107,7 @@ impl Matrix {
     #[inline]
     pub fn t(&self) -> Matrix { self.transpose() }
 
-    fn iter(&self) -> MatrixIter {
+    pub fn iter(&self) -> MatrixIter {
         MatrixIter {
             mat: &self,
             index: 0,
