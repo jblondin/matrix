@@ -3,7 +3,10 @@ use std::ops::{Add, Mul, Sub, Neg, Range, RangeTo, RangeFrom, RangeFull};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use blas::c::*;
+use blas;
+use blas::c::Layout;
+use lapack;
+use lapack::c::Layout as LapackLayout;
 
 use errors::*;
 
@@ -161,6 +164,19 @@ impl Matrix {
             }),
             transposed: Transpose::No,
         }
+    }
+
+    pub fn gram_solve(&self, b: &Matrix) -> Matrix {
+        let (n, nrhs) = (self.ncols(), b.ncols());
+        assert_eq!(b.nrows(), n);
+        let udu = self.t() * self;
+        let mut ipiv = vec![0; n];
+        let soln = b.clone();
+        let res = lapack::c::dsysv(LapackLayout::ColumnMajor, b'U',  n as i32, nrhs as i32,
+            &mut udu.data.values.borrow_mut()[..], n as i32, &mut ipiv[..],
+            &mut soln.data.values.borrow_mut()[..], n as i32);
+        assert_eq!(res, 0);
+        soln
     }
 
     #[inline]
@@ -710,5 +726,18 @@ mod tests {
         let out = -&a;
 
         assert_eq!(*out.data.values.borrow(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
+    }
+
+    #[test]
+    fn test_gram_solve() {
+        let a = Matrix::ones(5, 1).hcat(
+            &Matrix::from_vec(vec![0.45642, 0.86603, 0.38062, 0.62465, 0.15748], 5, 1));
+        let b = Matrix::from_vec(vec![0.886446, 0.096545], 2, 1);
+
+        let x = a.gram_solve(&b);
+        assert_eq!(x.dims(), (2, 1));
+        assert!((x - Matrix::from_vec(vec![0.78168, -1.21599], 2, 1)).iter()
+            .fold(f64::NEG_INFINITY, |acc, f| acc.max(f.abs())) < 0.00001);
+
     }
 }

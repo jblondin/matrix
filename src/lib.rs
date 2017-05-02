@@ -1,5 +1,6 @@
 
 extern crate blas;
+extern crate lapack;
 extern crate num;
 #[macro_use] extern crate error_chain;
 
