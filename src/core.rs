@@ -279,15 +279,23 @@ pub fn gemv(a: &Matrix, b: &Matrix, alpha: f64, c_beta: Option<(&Matrix, f64)>)
             (c.clone(), beta)
         },
         None => {
-            (Matrix::from_vec(vec![0.0; m * n], m, n,), 0.0)
+            (Matrix::from_vec(vec![0.0; m * n], m, n), 0.0)
         }
     };
 
     let (m, k, n) = (m as i32, k as i32, n as i32);
+    let lda = match a.transposed {
+        Transpose::Yes  => { k }
+        Transpose::No   => { m }
+    };
+    let ldb = match b.transposed {
+        Transpose::Yes  => { n }
+        Transpose::No   => { k }
+    };
 
-    dgemm(Layout::ColumnMajor, a.transposed.convert_to_blas(), b.transposed.convert_to_blas(),
-        m, n, k, alpha, &a.data.values.borrow()[..], m, &b.data.values.borrow()[..], k, beta,
-        &mut out.data.values.borrow_mut()[..], m);
+    blas::c::dgemm(Layout::ColumnMajor, a.transposed.convert_to_blas(),
+        b.transposed.convert_to_blas(), m, n, k, alpha, &a.data.values.borrow()[..], lda,
+        &b.data.values.borrow()[..], ldb, beta, &mut out.data.values.borrow_mut()[..], m);
     out
 }
 
