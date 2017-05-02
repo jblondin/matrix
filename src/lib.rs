@@ -7,4 +7,4 @@ extern crate num;
 mod errors;
 
 pub mod core;
-pub use core::{Matrix, gemv};
+pub use core::{Matrix, MatrixIter, SubMatrix, gemv};
