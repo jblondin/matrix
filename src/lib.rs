@@ -12,3 +12,5 @@ pub use core::{Matrix, MatrixIter, Transpose};
 mod ops;
 mod subm;
 pub use subm::SubMatrix;
+
+#[macro_use] mod macro_def;
