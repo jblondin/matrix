@@ -1,8 +1,9 @@
 // Example:
 // let a = mat![1, 2, 3, 4; 5, 6, 7, 8; 9, 10, 11, 12];
 // assert_eq!(a.dims(), (3, 4));
+#[macro_export]
 macro_rules! mat {
-    [$( $( $x:expr ),* );*] => {{
+    ($( $( $x:expr ),* );*) => {{
         let mut v: Vec<Vec<f64>> = Vec::new();
         let mut nrows = 0;
         let mut ncols = 0;
@@ -50,7 +51,7 @@ mod tests {
         assert_eq!(a.get(1, 3).unwrap(), 8.0);
         println!("{:#?}", a);
 
-        let a = mat![1, 2; 3.0, 4; 5.5, 6];
+        let a = mat!(1, 2; 3.0, 4; 5.5, 6);
         assert_eq!(a.dims(), (3, 2));
 
         assert_eq!(a.get(0, 0).unwrap(), 1.0);
