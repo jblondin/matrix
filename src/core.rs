@@ -74,6 +74,22 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    pub fn diag(vec: &Vec<f64>) -> Matrix {
+        let n = vec.len();
+        let mut m = Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(vec![0.0; n * n]),
+                rows: n,
+                cols: n,
+            }),
+            transposed: Transpose::No,
+        };
+
+        for i in 0..n {
+            m.set(i, i, vec[i]).expect("invalid indexing");
+        }
+        m
+    }
 
     pub fn nrows(&self) -> usize {
         match self.transposed {
@@ -262,6 +278,23 @@ mod tests {
         assert_eq!(a.get(0, 1).unwrap(), 2.0);
         assert_eq!(a.get(1, 0).unwrap(), 5.0);
         assert_eq!(a.get(1, 1).unwrap(), 4.0);
+    }
+
+    #[test]
+    fn test_diag() {
+        let a = Matrix::diag(&vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+
+        assert_eq!(a.dims(), (5, 5));
+
+        for i in 0..5 {
+            for j in 0..5 {
+                if i == j {
+                    assert_eq!(a.get(i, j).unwrap(), i as f64 + 1.0);
+                } else {
+                    assert_eq!(a.get(i, j).unwrap(), 0.0);
+                }
+            }
+        }
     }
 
     #[test]
