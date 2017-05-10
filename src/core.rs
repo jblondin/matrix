@@ -111,12 +111,17 @@ impl Matrix {
     }
 
     pub fn get(&self, r: usize, c: usize) -> Result<f64> {
-        let index = match self.transposed {
-            Transpose::Yes  => { self.trindex(c * self.nrows() + r) }
-            Transpose::No   => { c * self.nrows() + r }
-        };
-        self.data.values.borrow().get(index).map(|&f| f)
+        self.data.values.borrow().get(self.index(r, c)).map(|&f| f)
             .ok_or(Error::from_kind(ErrorKind::IndexError("index out of bounds")))
+    }
+    pub fn set(&mut self, r: usize, c: usize, value: f64) -> Result<()> {
+        let mut v = self.data.values.borrow_mut();
+        let i = self.index(r, c);
+        if i >= v.len() {
+            return Err(Error::from_kind(ErrorKind::IndexError("index out of bounds")));
+        }
+        v[i] = value;
+        Ok(())
     }
 
     pub fn hcat(&self, other: &Matrix) -> Matrix {
@@ -176,6 +181,14 @@ impl Matrix {
     }
 
     #[inline]
+    fn index(&self, r: usize, c: usize) -> usize {
+        let index = c * self.nrows() + r;
+        match self.transposed {
+            Transpose::Yes  => { self.trindex(index) }
+            Transpose::No   => { index }
+        }
+    }
+    #[inline]
     fn trindex(&self, index: usize) -> usize {
         (index % self.nrows()) * self.ncols()
             + (index as f32 / self.nrows() as f32).floor() as usize
@@ -228,6 +241,27 @@ mod tests {
         assert_eq!(a.dims(), (m, n));
         assert_eq!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)), 0.0);
         assert_eq!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)), 0.0);
+    }
+
+    #[test]
+    fn test_get() {
+        let a = mat![1, 2; 3, 4];
+        assert_eq!(a.dims(), (2, 2));
+        assert_eq!(a.get(0, 0).unwrap(), 1.0);
+        assert_eq!(a.get(0, 1).unwrap(), 2.0);
+        assert_eq!(a.get(1, 0).unwrap(), 3.0);
+        assert_eq!(a.get(1, 1).unwrap(), 4.0);
+    }
+    #[test]
+    fn test_set() {
+        let mut a = mat![1, 2; 3, 4];
+        assert_eq!(a.dims(), (2, 2));
+        a.set(1, 0, 5.0).unwrap();
+
+        assert_eq!(a.get(0, 0).unwrap(), 1.0);
+        assert_eq!(a.get(0, 1).unwrap(), 2.0);
+        assert_eq!(a.get(1, 0).unwrap(), 5.0);
+        assert_eq!(a.get(1, 1).unwrap(), 4.0);
     }
 
     #[test]
