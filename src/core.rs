@@ -2,6 +2,10 @@ use std::f64;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use rand::{self, Rand, Rng};
+use rand::distributions::{IndependentSample, Normal};
+use rand::distributions::normal::StandardNormal;
+
 use lapack;
 use lapack::c::Layout as LapackLayout;
 
@@ -89,6 +93,56 @@ impl Matrix {
             m.set(i, i, vec[i]).expect("invalid indexing");
         }
         m
+    }
+    pub fn rand(nrows: usize, ncols: usize) -> Matrix {
+        let mut rng = rand::thread_rng();
+
+        let mut v: Vec<f64> = Vec::new();
+        for _ in 0..nrows * ncols {
+            v.push(rng.gen());
+        }
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(v),
+                rows: nrows,
+                cols: ncols,
+            }),
+            transposed: Transpose::No,
+        }
+    }
+    pub fn randsn(nrows: usize, ncols: usize) -> Matrix {
+        let mut rng = rand::thread_rng();
+
+        let mut v: Vec<f64> = Vec::new();
+        for _ in 0..nrows * ncols {
+            v.push(StandardNormal::rand(&mut rng).0);
+        }
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(v),
+                rows: nrows,
+                cols: ncols,
+            }),
+            transposed: Transpose::No,
+        }
+    }
+    pub fn randn(nrows: usize, ncols: usize, mean: f64, stdev: f64) -> Matrix {
+        let mut rng = rand::thread_rng();
+        let dist = Normal::new(mean, stdev);
+
+        let mut v: Vec<f64> = Vec::new();
+        for _ in 0..nrows * ncols {
+            v.push(dist.ind_sample(&mut rng));
+        }
+        Matrix {
+            data: Rc::new(MatrixData {
+                values: RefCell::new(v),
+                rows: nrows,
+                cols: ncols,
+            }),
+            transposed: Transpose::No,
+        }
+
     }
 
     pub fn nrows(&self) -> usize {
@@ -296,6 +350,62 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_rand() {
+        use subm::SubMatrix;
+
+        let (m, n) = (100, 100);
+        let a = Matrix::rand(m, n);
+
+        assert_eq!(a.dims(), (m, n));
+
+        assert!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)) < 1.0);
+        assert!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)) >= 0.0);
+
+        println!("{:#?}", a.subm(0..5, 0..5));
+    }
+
+    #[test]
+    fn test_randsn() {
+        use subm::SubMatrix;
+
+        let (m, n) = (100, 100);
+        let a = Matrix::randsn(m, n);
+
+        assert_eq!(a.dims(), (m, n));
+
+        let rares = a.iter().fold(0, |acc, f| if f < -3.0 || f > 3.0 { acc + 1 } else { acc });
+        // should be ~0.003, give a bit of leeway
+        let limit = (0.006 * (m * n) as f64) as usize;
+        println!("{:#?} {:#?}", rares, limit);
+        assert!(rares < limit);
+
+        println!("{:#?}", a.subm(0..5, 0..5));
+    }
+
+    #[test]
+    fn test_randn() {
+        use subm::SubMatrix;
+
+        let (m, n) = (100, 100);
+        let (mean, stdev) = (10.0, 3.0);
+        let a = Matrix::randn(m, n, mean, stdev);
+
+        assert_eq!(a.dims(), (m, n));
+
+        let rares = a.iter().fold(
+            0,
+            |acc, f| if f < mean - 3.0 * stdev || f > mean + 3.0 * stdev { acc + 1 } else { acc }
+        );
+        // should be ~0.003, give a bit of leeway
+        let limit = (0.006 * (m * n) as f64) as usize;
+        println!("{:#?} {:#?}", rares, limit);
+        assert!(rares < limit);
+
+        println!("{:#?}", a.subm(0..5, 0..5));
+    }
+
 
     #[test]
     fn test_hcat() {
