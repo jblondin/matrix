@@ -94,6 +94,9 @@ impl Matrix {
         }
         m
     }
+    pub fn eye(n: usize) -> Matrix {
+        Matrix::diag(&vec![1.0; n])
+    }
     pub fn rand(nrows: usize, ncols: usize) -> Matrix {
         let mut rng = rand::thread_rng();
 
@@ -344,6 +347,22 @@ mod tests {
             for j in 0..5 {
                 if i == j {
                     assert_eq!(a.get(i, j).unwrap(), i as f64 + 1.0);
+                } else {
+                    assert_eq!(a.get(i, j).unwrap(), 0.0);
+                }
+            }
+        }
+    }
+    #[test]
+    fn test_eye() {
+        let a = Matrix::eye(5);
+
+        assert_eq!(a.dims(), (5, 5));
+
+        for i in 0..5 {
+            for j in 0..5 {
+                if i == j {
+                    assert_eq!(a.get(i, j).unwrap(), 1.0);
                 } else {
                     assert_eq!(a.get(i, j).unwrap(), 0.0);
                 }
