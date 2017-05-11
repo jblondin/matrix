@@ -4,6 +4,7 @@ extern crate lapack;
 extern crate num;
 #[macro_use] extern crate error_chain;
 extern crate rand;
+#[allow(unused_imports)] #[macro_use] extern crate unittest;
 
 mod errors;
 
