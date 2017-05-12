@@ -27,32 +27,15 @@ impl SingularValueDecompose for Matrix {
         let vt = Matrix::zeros(ldvt, n);
 
         let min = |x: usize , y: usize| { if x < y { x } else { y } };
-        let max = |x: usize , y: usize| { if x > y { x } else { y } };
-        let (mindim, maxdim) = (min(m, n), max(m, n));
-        let lwork = max(3 * mindim + maxdim, 5 * mindim);
-        let mut work = vec![0.0; lwork];
+        let mindim = min(m, n);
 
         let input = self.clone();
         let mut singular_values = vec![0.0; mindim];
 
-        lapack::c::dgesvd_work(Layout::ColumnMajor, b'A', b'A', m as i32, n as i32,
+        lapack::c::dgesdd(Layout::ColumnMajor, b'A', m as i32, n as i32,
             &mut input.data.values.borrow_mut()[..], lda as i32, &mut singular_values[..],
             &mut u.data.values.borrow_mut()[..], ldu as i32,
-            &mut vt.data.values.borrow_mut()[..], ldvt as i32,
-            &mut work, lwork as i32);
-
-        // TODO: test other possible options
-        // let superb = vec![0.0; mindim - 2];
-        // lapack::c::dgesvd(Layout::ColumnMajor, b'A', b'T', m, n,
-        //     &mut input.data.values.borrow_mut()[..], lda, &mut &singular_values[..],
-        //     &mut u.data.values.borrow_mut()[..], ldu,
-        //     &mut vt.data.values.borrow_mut()[..], ldvt,
-        //     &mut superb);
-
-        // lapack::c::dgesdd(Layout::ColumnMajor, b'A', m, n,
-        //     &mut input.data.values.borrow_mut()[..], lda, &mut &singular_values[..],
-        //     &mut u.data.values.borrow_mut()[..], ldu,
-        //     &mut vt.data.values.borrow_mut()[..], ldvt);
+            &mut vt.data.values.borrow_mut()[..], ldvt as i32);
 
         SVD {
             u: u,
