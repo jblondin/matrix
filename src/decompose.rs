@@ -111,52 +111,65 @@ impl LUDecompose for Matrix {
 }
 
 #[derive(Debug, Clone)]
-pub struct QR<T> {
-    pub q: T,
-    pub r: T,
+pub struct QR<T, S> {
+    qr: T,
+    tau: S,
 }
+impl QR<Matrix, Vec<f64>> {
+    fn q(&self) -> Matrix {
+        let (m,n) = self.qr.dims();
+        let mut q = Matrix::eye(m);
+        for k in 0..min(m, n) {
+            let mut v = Matrix::zeros(m, 1);
+            v.set(k, 0, 1.0).unwrap();
+            for i in (k + 1)..m {
+                v.set(i, 0, self.qr.get(i, k).unwrap()).unwrap();
+            }
+            let h = Matrix::eye(m) - self.tau[k] * &v * &v.t();
+            q = q * h;
+        }
+        q
+    }
+
+    fn r(&self) -> Matrix {
+        let (m, n) = self.qr.dims();
+        let mut r = Matrix::zeros(m, n);
+        for i in 0..min(m, n) {
+            for j in i..n {
+                r.set(i, j, self.qr.get(i, j).unwrap()).unwrap();
+            }
+        }
+        r
+    }
+}
+impl Compose<Matrix> for QR<Matrix, Vec<f64>> {
+    fn compose(&self) -> Matrix {
+        &self.q() * &self.r()
+    }
+}
+
 pub trait QRDecompose: Sized {
-    fn qr(&self) -> QR<Self>;
+    type TauStore;
+
+    fn qr(&self) -> QR<Self, Self::TauStore>;
 }
 
 impl QRDecompose for Matrix {
-    fn qr(&self) -> QR<Matrix> {
+    type TauStore = Vec<f64>;
+
+    fn qr(&self) -> QR<Matrix, Vec<f64>> {
 
         let (m, n) = (self.nrows(), self.ncols());
         let lda = m;
 
-        let inout = self.clone();
-
-        let mindim = min(m, n);
-        let mut tau = vec![0.0; mindim];
-
-        lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
-            &mut inout.data.values.borrow_mut()[..], lda as i32,
-            &mut tau[..]);
-
-
         let mut qr = QR {
-            q: Matrix::eye(m),
-            r: Matrix::zeros(m, n),
+            qr: self.clone(),
+            tau: vec![0.0; min(m, n)],
         };
 
-        // form Q
-        for k in 0..mindim {
-            let mut v = Matrix::zeros(m, 1);
-            v.set(k, 0, 1.0).unwrap();
-            for i in (k + 1)..m {
-                v.set(i, 0, inout.get(i, k).unwrap()).unwrap();
-            }
-            let h = Matrix::eye(m) - tau[k] * &v * &v.t();
-            qr.q = qr.q * h;
-        }
-
-        // form R
-        for i in 0..mindim {
-            for j in i..n {
-                qr.r.set(i, j, inout.get(i, j).unwrap()).unwrap();
-            }
-        }
+        lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
+            &mut qr.qr.data.values.borrow_mut()[..], lda as i32,
+            &mut qr.tau[..]);
 
         qr
     }
@@ -273,29 +286,35 @@ mod tests {
         lu_test_driver(8, 6);
     }
 
-
-
     fn qr_test_driver(m: usize, n: usize) {
         let a = Matrix::randsn(m, n);
         println!("a:\n{}", a);
 
         let qr = a.qr();
-        println!("q:\n{}\nr:\n{}\n", qr.q, qr.r);
+        let q = qr.q();
+        let r = qr.r();
+        println!("q:\n{}\nr:\n{}\n", q, r);
+
         // make sure Q is unitary
-        assert_fpvec_eq!(Matrix::eye(m), &qr.q * &qr.q.t(), 1e-5);
-        assert_fpvec_eq!(Matrix::eye(m), &qr.q.t() * &qr.q, 1e-5);
+        assert_fpvec_eq!(Matrix::eye(m), &q * &q.t(), 1e-5);
+        assert_fpvec_eq!(Matrix::eye(m), &q.t() * &q, 1e-5);
 
         // make sure R is upper trapezoidal
         for i in 1..m {
             for j in 0..min(i, n) {
-                assert_eq!(qr.r.get(i, j).unwrap(), 0.0);
+                assert_eq!(r.get(i, j).unwrap(), 0.0);
             }
         }
 
         // make sure QR decomposition recomposes properly
-        let a_composed = &qr.q * &qr.r;
+        let a_composed = qr.compose();
         println!("a_composed:\n{}", a_composed);
         assert_fpvec_eq!(a, a_composed);
+
+        // also try manually
+        let a_composedmanual = &q * &r;
+        println!("a_composedmanual:\n{}", a_composedmanual);
+        assert_fpvec_eq!(a, a_composedmanual);
     }
 
     #[test]

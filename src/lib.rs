@@ -18,4 +18,4 @@ mod subm;
 pub use subm::SubMatrix;
 
 mod decompose;
-pub use decompose::{Compose, SVD, SingularValueDecompose, LU, LUDecompose};
+pub use decompose::{Compose, LU, LUDecompose, QR, QRDecompose, SVD, SingularValueDecompose};
