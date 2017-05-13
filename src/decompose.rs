@@ -6,6 +6,110 @@ use Matrix;
 #[inline]
 fn min(x: usize, y: usize) -> usize { if x < y { x } else { y } }
 
+pub trait Compose<T> {
+    fn compose(&self) -> T;
+}
+
+#[derive(Debug, Clone)]
+pub struct LU<T, P> {
+    lu: T,
+    ipiv: P,
+}
+impl LU<Matrix, Vec<usize>> {
+    pub fn l(&self) -> Matrix {
+        let (m, n) = self.lu.dims();
+
+        let mut l = Matrix::zeros(m, min(m, n));
+        for i in 0..m {
+            for j in 0..min(i + 1, n) {
+                if i == j {
+                    l.set(i, j, 1.0).unwrap();
+                } else {
+                    l.set(i, j, self.lu.get(i, j).unwrap()).unwrap();
+                }
+            }
+        }
+        l
+    }
+    pub fn u(&self) -> Matrix {
+        let (m, n) = self.lu.dims();
+
+        let mindim = min(m, n);
+        let mut u = Matrix::zeros(min(m, n), n);
+        for i in 0..mindim {
+            for j in i..n {
+                u.set(i, j, self.lu.get(i, j).unwrap()).unwrap();
+            }
+        }
+        u
+    }
+    pub fn p(&self) -> Matrix {
+        let m = self.lu.nrows();
+
+        // mutate ipiv into permutation vector
+        let mut p: Vec<usize> = Vec::new();
+        for i in 0..m { p.push(i); }
+        if p.len() > 0 {
+            for i in (0..p.len() - 1).rev() {
+                if i < self.ipiv.len() {
+                    p.swap(self.ipiv[i], i);
+                }
+            }
+        }
+
+        // form into permutation matrix
+        let mut pmat = Matrix::zeros(m, m);
+        for i in 0..m {
+            pmat.set(i, p[i], 1.0).unwrap();
+        }
+        pmat
+    }
+}
+impl Compose<Matrix> for LU<Matrix, Vec<usize>> {
+    fn compose(&self) -> Matrix {
+        let mut lu = self.l() * self.u();
+        // permute in place instead of generating permutation matrix
+        for i in (0..lu.nrows()).rev() {
+            if i < self.ipiv.len() && self.ipiv[i] != i {
+                for j in 0..lu.ncols() {
+                    let valueij= lu.get(i, j).unwrap();
+                    let valueipivj = lu.get(self.ipiv[i], j).unwrap();
+                    lu.set(self.ipiv[i], j, valueij).unwrap();
+                    lu.set(i, j, valueipivj).unwrap();
+                }
+            }
+        }
+        lu
+    }
+}
+
+pub trait LUDecompose: Sized {
+    type PermutationStore;
+
+    fn lu(&self) -> LU<Self, Self::PermutationStore>;
+}
+
+impl LUDecompose for Matrix {
+    type PermutationStore = Vec<usize>;
+
+    fn lu(&self) -> LU<Matrix, Vec<usize>> {
+
+        let (m, n) = self.dims();
+        let lda = m;
+
+        let lu = self.clone();
+        let mut ipiv: Vec<i32> = vec![0; min(m, n)];
+        lapack::c::dgetrf(Layout::ColumnMajor, m as i32, n as i32,
+            &mut lu.data.values.borrow_mut()[..], lda as i32,
+            &mut ipiv[..]);
+
+        LU {
+            lu: lu,
+            ipiv: ipiv.iter().map(|&i| i as usize - 1).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QR<T> {
     pub q: T,
@@ -105,6 +209,71 @@ mod tests {
 
     use rand::{self, Rng};
     use std::cmp::Ordering;
+
+    fn lu_test_driver(m: usize, n: usize) {
+        let a = Matrix::randsn(m, n);
+
+        let lu = a.lu();
+        println!("lu\n{}\nl\n{}\nu\n{}\np\n{}", lu.lu, lu.l(), lu.u(), lu.p());
+        println!("a\n{}\na_lu\n{}", a, &lu.l() * &lu.u());
+
+        // make sure L is lower trapezoidal
+        let l = lu.l();
+        for i in 0..m {
+            for j in (i + 1)..min(m, n) {
+                assert_eq!(l.get(i, j).unwrap(), 0.0);
+            }
+        }
+
+        // make sure U is upper trapezoidal
+        let u = lu.u();
+        for i in 1..min(m, n) {
+            for j in 0..min(i, n) {
+                assert_eq!(u.get(i, j).unwrap(), 0.0);
+            }
+        }
+
+        // make sure P is a valid permutation matrix
+        let p = lu.p();
+        let sum = p.iter().fold(0.0, |acc, f| acc + f);
+        assert_eq!(sum, m as f64);
+        for i in 0..min(m, n) {
+            let mut sum_row = 0.0;
+            for j in 0..p.ncols() { sum_row += p.get(i, j).unwrap(); }
+            assert_eq!(sum_row, 1.0);
+        }
+        for j in 0..min(m, n) {
+            let mut sum_col = 0.0;
+            for i in 0..p.nrows() { sum_col += p.get(i, j).unwrap(); }
+            assert_eq!(sum_col, 1.0);
+        }
+
+        // make sure if composes
+        let a_composed = lu.compose();
+        assert_fpvec_eq!(a, a_composed);
+        println!("a_composed\n{}", a_composed);
+
+        // also try composing with full permutation matrix
+        let a_composedfullpm = &lu.p() * &lu.l() * &lu.u();
+        assert_fpvec_eq!(a, a_composedfullpm);
+        println!("a_composedfullpm\n{}", a_composedfullpm);
+
+    }
+
+    #[test]
+    fn test_lu_square() {
+        lu_test_driver(6, 6);
+    }
+    #[test]
+    fn test_lu_wide() {
+        lu_test_driver(6, 8);
+    }
+    #[test]
+    fn test_lu_narrow() {
+        lu_test_driver(8, 6);
+    }
+
+
 
     fn qr_test_driver(m: usize, n: usize) {
         let a = Matrix::randsn(m, n);
