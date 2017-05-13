@@ -41,16 +41,7 @@ impl QRDecompose for Matrix {
             for i in (k + 1)..m {
                 v.set(i, 0, inout.get(i, k).unwrap()).unwrap();
             }
-            //TODO: switch to using normal matrix scalar multiplication once I implement it
-            let mut vm = &v * &v.t();
-            for i in 0..m {
-                for j in 0..m {
-                    let prev_value = vm.get(i, j).unwrap();
-                    vm.set(i, j, tau[k] * prev_value).unwrap();
-                }
-            }
-            let h = Matrix::eye(m) - vm;
-            // let h = Matrix::eye(m) - tau[k] * v * v.t();
+            let h = Matrix::eye(m) - tau[k] * &v * &v.t();
             qr.q = qr.q * h;
         }
 
