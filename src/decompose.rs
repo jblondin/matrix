@@ -3,6 +3,9 @@ use lapack::c::Layout;
 
 use Matrix;
 
+#[inline]
+fn min(x: usize, y: usize) -> usize { if x < y { x } else { y } }
+
 #[derive(Debug, Clone)]
 pub struct QR<T> {
     pub q: T,
@@ -20,7 +23,6 @@ impl QRDecompose for Matrix {
 
         let inout = self.clone();
 
-        let min = |x: usize , y: usize| { if x < y { x } else { y } };
         let mindim = min(m, n);
         let mut tau = vec![0.0; mindim];
 
@@ -79,7 +81,6 @@ impl SingularValueDecompose for Matrix {
         let u = Matrix::zeros(ldu, m);
         let vt = Matrix::zeros(ldvt, n);
 
-        let min = |x: usize , y: usize| { if x < y { x } else { y } };
         let mindim = min(m, n);
 
         let input = self.clone();
@@ -117,7 +118,7 @@ mod tests {
 
         // make sure R is upper trapezoidal
         for i in 1..m {
-            for j in 0..i {
+            for j in 0..min(i, n) {
                 assert_eq!(qr.r.get(i, j).unwrap(), 0.0);
             }
         }
@@ -132,13 +133,14 @@ mod tests {
     fn test_qr_square() {
         qr_test_driver(6, 6);
     }
-
     #[test]
-    fn test_qr_rect() {
+    fn test_qr_wide() {
         qr_test_driver(6, 8);
     }
-
-
+    #[test]
+    fn test_qr_narrow() {
+        qr_test_driver(8, 6);
+    }
 
     #[test]
     fn test_svd() {
