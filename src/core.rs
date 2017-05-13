@@ -1,6 +1,7 @@
 use std::f64;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::fmt;
 
 use rand::{self, Rand, Rng};
 use rand::distributions::{IndependentSample, Normal};
@@ -11,7 +12,7 @@ use lapack::c::Layout as LapackLayout;
 
 use errors::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Transpose {
     Yes,
     No,
@@ -40,7 +41,7 @@ pub struct MatrixData {
     cols: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Matrix {
     pub data: Rc<MatrixData>,
     pub transposed: Transpose,
@@ -253,6 +254,13 @@ impl Matrix {
         soln
     }
 
+    pub fn create_view(&self) -> Matrix {
+        Matrix {
+            data: self.data.clone(),
+            transposed: self.transposed,
+        }
+    }
+
     #[inline]
     fn index(&self, r: usize, c: usize) -> usize {
         let index = c * self.nrows() + r;
@@ -265,6 +273,24 @@ impl Matrix {
     fn trindex(&self, index: usize) -> usize {
         (index % self.nrows()) * self.ncols()
             + (index as f32 / self.nrows() as f32).floor() as usize
+    }
+}
+
+impl fmt::Display for Matrix {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in 0..self.nrows() {
+            for j in 0..self.ncols() {
+                write!(f, "{:+1.5e} ", self.get(i, j).unwrap())?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
+    }
+}
+
+impl Clone for Matrix {
+    fn clone(&self) -> Matrix {
+        Matrix::from_vec(self.iter().collect(), self.nrows(), self.ncols())
     }
 }
 
