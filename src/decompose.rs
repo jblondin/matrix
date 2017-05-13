@@ -4,6 +4,68 @@ use lapack::c::Layout;
 use Matrix;
 
 #[derive(Debug, Clone)]
+pub struct QR<T> {
+    pub q: T,
+    pub r: T,
+}
+pub trait QRDecompose: Sized {
+    fn qr(&self) -> QR<Self>;
+}
+
+impl QRDecompose for Matrix {
+    fn qr(&self) -> QR<Matrix> {
+
+        let (m, n) = (self.nrows(), self.ncols());
+        let lda = m;
+
+        let inout = self.clone();
+
+        let min = |x: usize , y: usize| { if x < y { x } else { y } };
+        let mindim = min(m, n);
+        let mut tau = vec![0.0; mindim];
+
+        lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
+            &mut inout.data.values.borrow_mut()[..], lda as i32,
+            &mut tau[..]);
+
+
+        let mut qr = QR {
+            q: Matrix::eye(m),
+            r: Matrix::zeros(m, n),
+        };
+
+        // form Q
+        for k in 0..mindim {
+            let mut v = Matrix::zeros(m, 1);
+            v.set(k, 0, 1.0).unwrap();
+            for i in (k + 1)..m {
+                v.set(i, 0, inout.get(i, k).unwrap()).unwrap();
+            }
+            //TODO: switch to using normal matrix scalar multiplication once I implement it
+            let mut vm = &v * &v.t();
+            for i in 0..m {
+                for j in 0..m {
+                    let prev_value = vm.get(i, j).unwrap();
+                    vm.set(i, j, tau[k] * prev_value).unwrap();
+                }
+            }
+            let h = Matrix::eye(m) - vm;
+            // let h = Matrix::eye(m) - tau[k] * v * v.t();
+            qr.q = qr.q * h;
+        }
+
+        // form R
+        for i in 0..mindim {
+            for j in i..n {
+                qr.r.set(i, j, inout.get(i, j).unwrap()).unwrap();
+            }
+        }
+
+        qr
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SVD<T, U> {
     pub u: T,
     pub sigma: U,
@@ -51,6 +113,41 @@ mod tests {
 
     use rand::{self, Rng};
     use std::cmp::Ordering;
+
+    fn qr_test_driver(m: usize, n: usize) {
+        let a = Matrix::randsn(m, n);
+        println!("a:\n{}", a);
+
+        let qr = a.qr();
+        println!("q:\n{}\nr:\n{}\n", qr.q, qr.r);
+        // make sure Q is unitary
+        assert_fpvec_eq!(Matrix::eye(m), &qr.q * &qr.q.t(), 1e-5);
+        assert_fpvec_eq!(Matrix::eye(m), &qr.q.t() * &qr.q, 1e-5);
+
+        // make sure R is upper trapezoidal
+        for i in 1..m {
+            for j in 0..i {
+                assert_eq!(qr.r.get(i, j).unwrap(), 0.0);
+            }
+        }
+
+        // make sure QR decomposition recomposes properly
+        let a_composed = &qr.q * &qr.r;
+        println!("a_composed:\n{}", a_composed);
+        assert_fpvec_eq!(a, a_composed);
+    }
+
+    #[test]
+    fn test_qr_square() {
+        qr_test_driver(6, 6);
+    }
+
+    #[test]
+    fn test_qr_rect() {
+        qr_test_driver(6, 8);
+    }
+
+
 
     #[test]
     fn test_svd() {
