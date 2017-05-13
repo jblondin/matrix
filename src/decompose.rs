@@ -89,12 +89,14 @@ mod tests {
         assert_fpvec_eq!(Matrix::eye(6), &v.t() * &v, 1e-5);
 
         // compose the matrix
-        let m = u * sigma * v.t();
+        let m = &u * &sigma * &v.t();
+        println!("m:\n{}", m);
 
         // decompose it back to get the singular values
         let svd = m.svd();
         println!("{:#?}", svd);
-        // make sure singular values are identicay
+
+        // make sure singular values are identical
         assert_fpvec_eq!(svd.sigma, sigma_diag);
 
         // make sure return U and V matrices are unitary
@@ -102,5 +104,11 @@ mod tests {
         assert_fpvec_eq!(Matrix::eye(6), &svd.u.t() * &svd.u, 1e-5);
         assert_fpvec_eq!(Matrix::eye(6), &svd.v * &svd.v.t(), 1e-5);
         assert_fpvec_eq!(Matrix::eye(6), &svd.v.t() * &svd.v, 1e-5);
+
+        // make sure the SVD recomposes properly
+        let m_composed = &svd.u * Matrix::diag(&svd.sigma) * &svd.v.t();
+
+        println!("diff: {}", &m - &m_composed);
+        assert_fpvec_eq!(m, m_composed);
     }
 }
