@@ -139,6 +139,46 @@ implement_mul!(Matrix, &'a Matrix, 'a);
 implement_mul!(&'a Matrix, Matrix, 'a);
 implement_mul!(&'a Matrix, &'b Matrix, 'a, 'b);
 
+fn scalar_mul(mat: &Matrix, rhs: f64) -> Matrix {
+    let mut out = mat.clone();
+    for i in 0..mat.nrows() {
+        for j in 0..mat.ncols() {
+            let prev_value = out.get(i, j).unwrap();
+            out.set(i, j, rhs * prev_value).unwrap();
+        }
+    }
+    out
+}
+
+impl Mul<f64> for Matrix {
+    type Output = Matrix;
+
+    fn mul(self, rhs: f64) -> Matrix {
+        scalar_mul(&self, rhs)
+    }
+}
+impl<'a> Mul<f64> for &'a Matrix {
+    type Output = Matrix;
+
+    fn mul(self, rhs: f64) -> Matrix {
+        scalar_mul(self, rhs)
+    }
+}
+impl Mul<Matrix> for f64 {
+    type Output = Matrix;
+
+    fn mul(self, rhs: Matrix) -> Matrix {
+        scalar_mul(&rhs, self)
+    }
+}
+impl<'a> Mul<&'a Matrix> for f64 {
+    type Output = Matrix;
+
+    fn mul(self, rhs: &'a Matrix) -> Matrix {
+        scalar_mul(rhs, self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,6 +260,57 @@ mod tests {
             vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
     }
 
+    #[test]
+    fn test_matrix_scalar_mul_move() {
+        let (m, n) = (2, 4);
+        let a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
+
+        let out = a * 2.0;
+
+        assert_eq!(out.nrows(), m);
+        assert_eq!(out.ncols(), n);
+        assert_eq!(*out.data.values.borrow(),
+            vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
+    }
+
+    #[test]
+    fn test_matrix_scalar_mul_ref() {
+        let (m, n) = (2, 4);
+        let a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
+
+        let out = &a * 2.0;
+
+        assert_eq!(out.nrows(), m);
+        assert_eq!(out.ncols(), n);
+        assert_eq!(*out.data.values.borrow(),
+            vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
+    }
+
+    #[test]
+    fn test_scalar_matrix_mul_move() {
+        let (m, n) = (2, 4);
+        let a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
+
+        let out = 2.0 * a;
+
+        assert_eq!(out.nrows(), m);
+        assert_eq!(out.ncols(), n);
+        assert_eq!(*out.data.values.borrow(),
+            vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
+    }
+
+    #[test]
+    fn test_scalar_matrix_mul_ref() {
+        let (m, n) = (2, 4);
+        let a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
+
+        let out = 2.0 * &a;
+
+        assert_eq!(out.nrows(), m);
+        assert_eq!(out.ncols(), n);
+        assert_eq!(*out.data.values.borrow(),
+            vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
+    }
     #[test]
     fn test_matrix_add_move_ref() {
         let (m, n) = (2, 4);
