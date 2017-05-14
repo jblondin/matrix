@@ -1,6 +1,8 @@
 use lapack;
 use lapack::c::Layout;
 
+use errors::*;
+
 use Matrix;
 
 #[inline]
@@ -172,6 +174,64 @@ impl QRDecompose for Matrix {
             &mut qr.tau[..]);
 
         qr
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Cholesky<T> {
+    a: T,
+}
+impl Cholesky<Matrix> {
+    pub fn l(&self) -> Matrix {
+        let m = self.a.nrows();
+        let mut l = Matrix::zeros(m, m);
+
+        for i in 0..m {
+            for j in 0..i + 1 {
+                l.set(i, j, self.a.get(i, j).unwrap()).unwrap();
+            }
+        }
+
+        l
+    }
+}
+impl Compose<Matrix> for Cholesky<Matrix> {
+    fn compose(&self) -> Matrix {
+        let l = self.l();
+        &l * l.t()
+    }
+}
+
+pub trait CholeskyDecompose: Sized {
+    fn chol(&self) -> Result<Cholesky<Matrix>>;
+}
+impl CholeskyDecompose for Matrix {
+    fn chol(&self) -> Result<Cholesky<Matrix>> {
+
+        let (m, n) = self.dims();
+        if m != n {
+            return Err(Error::from_kind(ErrorKind::DecompositionError(
+                "Cholesky decomposition only available for square matrices".to_string())))
+        }
+        let lda = n;
+
+        let chol = Cholesky {
+            a: self.clone()
+        };
+
+        let info = lapack::c::dpotrf(Layout::ColumnMajor, b'L', n as i32,
+            &mut chol.a.data.values.borrow_mut()[..], lda as i32);
+
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("Cholesky factorization: Invalid call to dpotrf in argument {}", -info))))
+        } else if info > 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("Cholesky factorization: Matrix not symmetric positive definite \
+                (leading minor of order {} not positive definite)", info))))
+        } else {
+            Ok(chol)
+        }
     }
 }
 
@@ -357,6 +417,93 @@ mod tests {
     #[test]
     fn test_qr_narrow() {
         qr_test_driver(8, 6);
+    }
+
+    fn cholesky_test_driver(a: Matrix) -> Result<()> {
+        let (m, n) = a.dims();
+        let chol_res = a.chol();
+
+        match chol_res {
+            Ok(chol)   => {
+                // if chol completed, A must be square
+                assert_eq!(m, n);
+
+                // ensure L is lower triangular
+                let l = chol.l();
+                println!("{}", l);
+                assert_eq!(l.dims(), (m, m));
+                for i in 0..m {
+                    for j in (i + 1)..m {
+                        assert_eq!(l.get(i, j).unwrap(), 0.0);
+                    }
+                }
+
+                // make sure the cholesky decomposition recomposes properly
+                let a_composed = chol.compose();
+                println!("diff: {}", &a - &a_composed);
+                assert_fpvec_eq!(a, a_composed);
+
+                // also try to compose manually
+                let a_composedmanual = &l * l.t();
+                println!("diff: {}", &a - &a_composedmanual);
+                assert_fpvec_eq!(a, a_composedmanual);
+
+                Ok(())
+            }
+            Err(e)  => { Err(e) }
+        }
+    }
+
+    fn rand_symm_psd(m: usize) -> Matrix {
+        let a_nonpsd = Matrix::randsn(m, m);
+        &a_nonpsd * a_nonpsd.t() + m as f64 * Matrix::eye(m)
+    }
+
+    #[test]
+    fn test_chol() {
+        let m = 6;
+        let a = rand_symm_psd(m);
+
+        assert!(cholesky_test_driver(a).is_ok());
+    }
+
+    #[test]
+    fn test_chol_nonsquare() {
+        let (m, n) = (8, 6);
+        let a_nonsquare = Matrix::randsn(m, n);
+
+        let chol_res = cholesky_test_driver(a_nonsquare);
+        assert!(chol_res.is_err());
+        let e = chol_res.unwrap_err();
+        println!("{:?}", e.kind());
+        match *e.kind() {
+            ErrorKind::DecompositionError(ref m) => {
+                assert!(m.find("square").is_some());
+            },
+            _ => { panic!(format!("Expected DecompositionError, found: {:?}", e.kind())) }
+        }
+    }
+
+    #[test]
+    fn test_chol_nonposdef() {
+        let m = 6;
+        let mut a = rand_symm_psd(m);
+
+        // set a value on the diagonal to negative, which will ensure matrix is not PSD
+        let prev_value = a.get(3, 3).unwrap();
+        a.set(3, 3, -1.0 * prev_value).unwrap();
+
+        let chol_res = cholesky_test_driver(a);
+        assert!(chol_res.is_err());
+        let e = chol_res.unwrap_err();
+        println!("{:?}", e.kind());
+        match *e.kind() {
+            ErrorKind::DecompositionError(ref m) => {
+                assert!(m.find("positive definite").is_some());
+            },
+            _ => { panic!(format!("Expected DecompositionError, found: {:?}", e.kind())) }
+        }
+
     }
 
     fn svd_test_driver(u: Matrix, sigma_diag: Vec<f64>, v: Matrix) {
