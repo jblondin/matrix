@@ -88,26 +88,31 @@ impl Compose<Matrix> for LU<Matrix, Vec<usize>> {
 pub trait LUDecompose: Sized {
     type PermutationStore;
 
-    fn lu(&self) -> LU<Self, Self::PermutationStore>;
+    fn lu(&self) -> Result<LU<Self, Self::PermutationStore>>;
 }
 
 impl LUDecompose for Matrix {
     type PermutationStore = Vec<usize>;
 
-    fn lu(&self) -> LU<Matrix, Vec<usize>> {
+    fn lu(&self) -> Result<LU<Matrix, Vec<usize>>> {
 
         let (m, n) = self.dims();
         let lda = m;
 
         let lu = self.clone();
         let mut ipiv: Vec<i32> = vec![0; min(m, n)];
-        lapack::c::dgetrf(Layout::ColumnMajor, m as i32, n as i32,
+        let info = lapack::c::dgetrf(Layout::ColumnMajor, m as i32, n as i32,
             &mut lu.data.values.borrow_mut()[..], lda as i32,
             &mut ipiv[..]);
 
-        LU {
-            lu: lu,
-            ipiv: ipiv.iter().map(|&i| i as usize - 1).collect(),
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("LU Decomposition: Invalid call to dgetrf in argument {}", -info))))
+        } else {
+            Ok(LU {
+                lu: lu,
+                ipiv: ipiv.iter().map(|&i| i as usize - 1).collect(),
+            })
         }
     }
 }
@@ -153,13 +158,13 @@ impl Compose<Matrix> for QR<Matrix, Vec<f64>> {
 pub trait QRDecompose: Sized {
     type TauStore;
 
-    fn qr(&self) -> QR<Self, Self::TauStore>;
+    fn qr(&self) -> Result<QR<Self, Self::TauStore>>;
 }
 
 impl QRDecompose for Matrix {
     type TauStore = Vec<f64>;
 
-    fn qr(&self) -> QR<Matrix, Vec<f64>> {
+    fn qr(&self) -> Result<QR<Matrix, Vec<f64>>> {
 
         let (m, n) = (self.nrows(), self.ncols());
         let lda = m;
@@ -169,11 +174,16 @@ impl QRDecompose for Matrix {
             tau: vec![0.0; min(m, n)],
         };
 
-        lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
+        let info = lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
             &mut qr.qr.data.values.borrow_mut()[..], lda as i32,
             &mut qr.tau[..]);
 
-        qr
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("QR Decomposition: Invalid call to dgeqrfp in argument {}", -info))))
+        } else {
+            Ok(qr)
+        }
     }
 }
 
@@ -273,13 +283,13 @@ impl Compose<Matrix> for SVD<Matrix, Vec<f64>> {
 pub trait SingularValueDecompose: Sized {
     type SingularValueStore;
 
-    fn svd(&self) -> SVD<Self, Self::SingularValueStore>;
+    fn svd(&self) -> Result<SVD<Self, Self::SingularValueStore>>;
 }
 
 impl SingularValueDecompose for Matrix {
     type SingularValueStore = Vec<f64>;
 
-    fn svd(&self) -> SVD<Matrix, Vec<f64>> {
+    fn svd(&self) -> Result<SVD<Matrix, Vec<f64>>> {
 
         let (m,n) = (self.nrows(), self.ncols());
         let (lda, ldu, ldvt) = (m, m, n);
@@ -292,15 +302,24 @@ impl SingularValueDecompose for Matrix {
         let input = self.clone();
         let mut singular_values = vec![0.0; mindim];
 
-        lapack::c::dgesdd(Layout::ColumnMajor, b'A', m as i32, n as i32,
+        let info = lapack::c::dgesdd(Layout::ColumnMajor, b'A', m as i32, n as i32,
             &mut input.data.values.borrow_mut()[..], lda as i32, &mut singular_values[..],
             &mut u.data.values.borrow_mut()[..], ldu as i32,
             &mut vt.data.values.borrow_mut()[..], ldvt as i32);
 
-        SVD {
-            u: u,
-            sigma: singular_values,
-            v: vt.t().clone()
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("Singular Value Decomposition: \
+                    Invalid call to dgesdd in argument {}", -info))))
+        } else if info > 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                "Singular Value Decomposition: did not converge".to_string())))
+        } else {
+            Ok(SVD {
+                u: u,
+                sigma: singular_values,
+                v: vt.t().clone()
+            })
         }
     }
 }
@@ -315,7 +334,7 @@ mod tests {
     fn lu_test_driver(m: usize, n: usize) {
         let a = Matrix::randsn(m, n);
 
-        let lu = a.lu();
+        let lu = a.lu().expect("LU decomposition failed");
         println!("lu\n{}\nl\n{}\nu\n{}\np\n{}", lu.lu, lu.l(), lu.u(), lu.p());
         println!("a\n{}\na_lu\n{}", a, &lu.l() * &lu.u());
 
@@ -379,7 +398,7 @@ mod tests {
         let a = Matrix::randsn(m, n);
         println!("a:\n{}", a);
 
-        let qr = a.qr();
+        let qr = a.qr().expect("QR decomposition failed");
         let q = qr.q();
         let r = qr.r();
         println!("q:\n{}\nr:\n{}\n", q, r);
@@ -534,7 +553,7 @@ mod tests {
         println!("mat:\n{}", mat);
 
         // decompose it back to get the singular values
-        let svd = mat.svd();
+        let svd = mat.svd().expect("SVD failed");
         println!("{:#?}", svd);
 
         // make sure singular values are identical
