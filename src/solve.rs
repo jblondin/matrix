@@ -203,7 +203,7 @@ mod tests {
     use SymmetrizeMethod;
 
     macro_rules! assert_error {
-        ($res:expr, $err_type:path, $needle:expr, $badtype_msgf:expr) => {
+        ($res:expr, $err_type:path, $needle:expr, $errtype_str:expr) => {
             assert!($res.is_err());
             let e = $res.unwrap_err();
             println!("{:?}", e.kind());
@@ -211,7 +211,7 @@ mod tests {
                 $err_type(ref m) => {
                     assert!(m.find($needle).is_some());
                 },
-                _ => { panic!($badtype_msgf(e.kind())) }
+                _ => { panic!(format!("Expected {}, found: {}", $errtype_str, e.kind())) }
             }
 
         }
@@ -278,8 +278,7 @@ mod tests {
 
         let solve_res = solve_exact_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "non-square",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "non-square", "SolveError");
     }
     #[test]
     fn test_solve_exact_singular() {
@@ -291,8 +290,7 @@ mod tests {
 
         let solve_res = solve_exact_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "singular",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "singular", "SolveError");
     }
     #[test]
     fn test_solve_exact_invalidrhs() {
@@ -304,8 +302,7 @@ mod tests {
 
         let solve_res = solve_exact_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
 
     fn solve_symm_driver(a: &Matrix, b: &Matrix) -> Result<Matrix> {
@@ -339,8 +336,7 @@ mod tests {
 
         let solve_res = solve_symm_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "non-square",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "non-square", "SolveError");
     }
     #[test]
     fn test_solve_symm_nonsymm() {
@@ -377,8 +373,7 @@ mod tests {
 
         let solve_res = solve_symm_driver(&a_symm, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "singular",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "singular", "SolveError");
     }
     #[test]
     fn test_solve_symm_invalidrhs() {
@@ -391,8 +386,7 @@ mod tests {
 
         let solve_res = solve_symm_driver(&a_symm, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
 
     fn solve_approx_driver(a: &Matrix, b: &Matrix) -> Result<ApproxSoln<Matrix>> {
@@ -474,8 +468,7 @@ mod tests {
 
         let solve_res = solve_approx_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "rank-deficient",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "rank-deficient", "SolveError");
     }
     #[test]
     fn test_solve_approx_invalidrhs() {
@@ -487,8 +480,7 @@ mod tests {
 
         let solve_res = solve_approx_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
 
     fn solve_driver(a: &Matrix, b: &Matrix) -> Result<Matrix> {
@@ -569,8 +561,7 @@ mod tests {
 
         let solve_res = solve_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
 
     fn inverse_driver(a: &Matrix) -> Result<Matrix> {
@@ -598,8 +589,7 @@ mod tests {
 
         let inverse_res = inverse_driver(&a);
 
-        assert_error!(inverse_res, ErrorKind::SolveError, "non-square",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(inverse_res, ErrorKind::SolveError, "non-square", "SolveError");
     }
     #[test]
     fn test_inverse_singular() {
@@ -609,8 +599,7 @@ mod tests {
 
         let inverse_res = inverse_driver(&a);
 
-        assert_error!(inverse_res, ErrorKind::SolveError, "singular",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(inverse_res, ErrorKind::SolveError, "singular", "SolveError");
     }
 
 
@@ -643,8 +632,7 @@ mod tests {
 
         let solve_res = gram_solve_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "singular",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "singular", "SolveError");
     }
     #[test]
     fn test_gram_solve_invalidrhs() {
@@ -654,7 +642,6 @@ mod tests {
 
         let solve_res = gram_solve_driver(&a, &b);
 
-        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
-            |kind| format!("Expected SolveError, found: {:?}", kind));
+        assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
 }
