@@ -24,3 +24,6 @@ pub use decompose::{Compose,
     Cholesky, CholeskyDecompose,
     SVD, SingularValueDecompose
 };
+
+mod solve;
+pub use solve::{Solve, GramSolve};

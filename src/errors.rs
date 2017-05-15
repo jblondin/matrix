@@ -8,5 +8,9 @@ error_chain! {
             description("Decomposition error")
             display("Decomposition error: {}", s)
         }
+        SolveError(s: String) {
+            description("Solver error")
+            display("Solver error: {}", s)
+        }
     }
 }
