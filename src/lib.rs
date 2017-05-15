@@ -11,7 +11,7 @@ mod errors;
 #[macro_use] mod macro_def;
 
 pub mod core;
-pub use core::{Matrix, MatrixIter, Transpose};
+pub use core::{Matrix, MatrixIter, Transpose, SymmetrizeMethod};
 
 mod ops;
 mod subm;

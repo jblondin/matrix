@@ -47,6 +47,12 @@ pub struct Matrix {
     pub transposed: Transpose,
 }
 
+// for to_symmetric
+pub enum SymmetrizeMethod {
+    CopyLower,
+    CopyUpper,
+}
+
 impl Matrix {
     pub fn from_vec(data: Vec<f64>, nrows: usize, ncols:usize) -> Matrix {
         assert_eq!(data.len(), nrows * ncols);
@@ -168,6 +174,7 @@ impl Matrix {
         }
     }
     pub fn length(&self) -> usize { self.data.cols * self.data.rows }
+    pub fn is_square(&self) -> bool { self.nrows() == self.ncols() }
     pub fn transpose(&self) -> Matrix {
         Matrix {
             data: self.data.clone(),
@@ -259,6 +266,31 @@ impl Matrix {
             data: self.data.clone(),
             transposed: self.transposed,
         }
+    }
+
+    pub fn to_symmetric(&self, method: SymmetrizeMethod) -> Matrix {
+        assert!(self.is_square());
+        let mut symm = self.clone();
+        match method {
+            SymmetrizeMethod::CopyUpper => {
+                for i in 0..self.nrows() {
+                    for j in 0..i {
+                        let prev_value = symm.get(j, i).unwrap();
+                        symm.set(i, j, prev_value).unwrap();
+                    }
+                }
+            }
+            SymmetrizeMethod::CopyLower => {
+                let m = self.nrows();
+                for i in 0..m {
+                    for j in (i + 1)..m {
+                        let prev_value = symm.get(j, i).unwrap();
+                        symm.set(i, j, prev_value).unwrap();
+                    }
+                }
+            }
+        }
+        symm
     }
 
     #[inline]
@@ -508,6 +540,35 @@ mod tests {
         let c = a.vcat(&bt);
         assert_eq!(c.dims(), (3, 3));
         assert_eq!(*c.data.values.borrow(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+    }
+
+    #[test]
+    fn test_symmetrize_lower() {
+        let a = mat![1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0];
+
+        let a_symm = a.to_symmetric(SymmetrizeMethod::CopyLower);
+        assert_fpvec_eq!(a_symm,
+            mat![1.0, 1.0, 1.0, 1.0;
+                 1.0, 2.0, 2.0, 2.0;
+                 1.0, 2.0, 3.0, 3.0;
+                 1.0, 2.0, 3.0, 4.0]);
+    }
+    #[test]
+    fn test_symmetrize_upper() {
+        let a = mat![1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0;
+                     1.0, 2.0, 3.0, 4.0];
+
+        let a_symm = a.to_symmetric(SymmetrizeMethod::CopyUpper);
+        assert_fpvec_eq!(a_symm,
+            mat![1.0, 2.0, 3.0, 4.0;
+                 2.0, 2.0, 3.0, 4.0;
+                 3.0, 3.0, 3.0, 4.0;
+                 4.0, 4.0, 4.0, 4.0]);
     }
 
     #[test]
