@@ -5,6 +5,8 @@ use errors::*;
 
 use Matrix;
 use SubMatrix;
+use LUDecompose;
+use decompose::{c_to_lapack_indexing};
 
 #[inline]
 fn max(x: usize, y: usize) -> usize { if x > y { x } else { y } }
@@ -23,6 +25,7 @@ pub trait Solve {
     fn solve_exact(&self, b: &Self::Rhs) -> Result<Self::Output>;
     fn solve_symm(&self, b: &Self::Rhs) -> Result<Self::Output>;
     fn solve_approx(&self, b: &Self::Rhs) -> Result<ApproxSoln<Self::Output>>;
+    fn inverse(&self) -> Result<Self::Output>;
 }
 
 impl Solve for Matrix {
@@ -143,6 +146,36 @@ impl Solve for Matrix {
                 })
             }
         }
+    }
+
+    fn inverse(&self) -> Result<Matrix> {
+        if !self.is_square() {
+            return Err(Error::from_kind(ErrorKind::SolveError(
+                "inverse called with non-square matrix".to_string())))
+        }
+
+        let m = self.nrows();
+        let lda = m;
+
+        let lu = self.lu()?;
+        let inout = lu.lu_data().clone();
+        let ipiv = c_to_lapack_indexing(lu.ipiv_data());
+
+        let info = lapack::c::dgetri(Layout::ColumnMajor, m as i32,
+            &mut inout.data.values.borrow_mut()[..], lda as i32,
+            &ipiv[..]);
+
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::SolveError(
+                format!("Matrix inversion: \
+                    Invalid call to dgetri in argument {}", -info))))
+        } else if info > 0 {
+            Err(Error::from_kind(ErrorKind::SolveError(
+                "Matrix inversion: matrix is singular ".to_string())))
+        } else {
+            Ok(inout)
+        }
+
     }
 }
 
@@ -539,6 +572,47 @@ mod tests {
         assert_error!(solve_res, ErrorKind::SolveError, "right-hand side",
             |kind| format!("Expected SolveError, found: {:?}", kind));
     }
+
+    fn inverse_driver(a: &Matrix) -> Result<Matrix> {
+        a.inverse().map(|x| {
+            assert_eq!(x.dims(), a.dims());
+            x
+        })
+    }
+    #[test]
+    fn test_inverse() {
+        let m = 6;
+        let a = Matrix::randsn(m, m);
+        println!("a\n{}", a);
+
+        let a_inverse = inverse_driver(&a).expect("inverse failed unexpectedly");
+        println!("a_inverse\n{}\na*a_inverse\n{}", a_inverse, &a * &a_inverse);
+
+        assert_fpvec_eq!(&a * &a_inverse, Matrix::eye(6), 1e-8);
+    }
+    #[test]
+    fn test_inverse_nonsquare() {
+        let (m, n) = (8, 6);
+        let a = Matrix::randsn(m, n);
+        println!("{}", a);
+
+        let inverse_res = inverse_driver(&a);
+
+        assert_error!(inverse_res, ErrorKind::SolveError, "non-square",
+            |kind| format!("Expected SolveError, found: {:?}", kind));
+    }
+    #[test]
+    fn test_inverse_singular() {
+        let m = 6;
+        let a = generate_singular_matrix(m, SingularMethod::Zeros);
+        println!("{}", a);
+
+        let inverse_res = inverse_driver(&a);
+
+        assert_error!(inverse_res, ErrorKind::SolveError, "singular",
+            |kind| format!("Expected SolveError, found: {:?}", kind));
+    }
+
 
     fn gram_solve_driver(a: &Matrix, b: &Matrix) -> Result<Matrix> {
         a.gram_solve(b).map(|x| {

@@ -12,6 +12,13 @@ pub trait Compose<T> {
     fn compose(&self) -> T;
 }
 
+pub fn lapack_to_c_indexing(v: &Vec<i32>) -> Vec<usize> {
+    v.iter().map(|&i| i as usize - 1).collect()
+}
+pub fn c_to_lapack_indexing(v: &Vec<usize>) -> Vec<i32> {
+    v.iter().map(|&u| u as i32 + 1).collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct LU<T, P> {
     lu: T,
@@ -66,6 +73,10 @@ impl LU<Matrix, Vec<usize>> {
         }
         pmat
     }
+    pub fn lu_data(&self) -> &Matrix { &self.lu }
+    pub fn ipiv_data(&self) -> &Vec<usize> { &self.ipiv }
+    pub fn lu_data_mut(&mut self) -> &mut Matrix { &mut self.lu }
+    pub fn ipiv_data_mut(&mut self) -> &mut Vec<usize> { &mut self.ipiv }
 }
 impl Compose<Matrix> for LU<Matrix, Vec<usize>> {
     fn compose(&self) -> Matrix {
@@ -111,7 +122,7 @@ impl LUDecompose for Matrix {
         } else {
             Ok(LU {
                 lu: lu,
-                ipiv: ipiv.iter().map(|&i| i as usize - 1).collect(),
+                ipiv: lapack_to_c_indexing(&ipiv),
             })
         }
     }
