@@ -179,6 +179,20 @@ impl<'a> Mul<&'a Matrix> for f64 {
     }
 }
 
+pub trait Dot<T> {
+    type Output;
+
+    fn dot(&self, rhs: &T) -> Self::Output;
+}
+impl Dot<Matrix> for Matrix {
+    type Output = f64;
+
+    fn dot(&self, rhs: &Matrix) -> f64 {
+        assert!(self.is_vector() && rhs.is_vector());
+        self.iter().zip(rhs.iter()).map(|(l, r)| l * r).fold(0.0, |acc, f| acc + f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,6 +435,45 @@ mod tests {
         let out = -&a;
 
         assert_eq!(*out.data.values.borrow(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
+    }
+
+    #[test]
+    fn test_dot() {
+        let expected = 10.0 + 40.0 + 90.0 + 160.0 + 250.0 + 360.0;
+
+        let a = mat![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b = mat![10.0, 20.0, 30.0, 40.0, 50.0, 60.0];
+        assert!(a.is_row_vector());
+        assert!(b.is_row_vector());
+        assert_eq!(a.dot(&b), expected);
+
+        let a = mat![1.0; 2.0; 3.0; 4.0; 5.0; 6.0];
+        let b = mat![10.0, 20.0, 30.0, 40.0, 50.0, 60.0];
+        assert!(a.is_col_vector());
+        assert!(b.is_row_vector());
+        assert_eq!(a.dot(&b), expected);
+
+        let a = mat![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b = mat![10.0; 20.0; 30.0; 40.0; 50.0; 60.0];
+        assert!(a.is_row_vector());
+        assert!(b.is_col_vector());
+        assert_eq!(a.dot(&b), expected);
+
+        let a = mat![1.0; 2.0; 3.0; 4.0; 5.0; 6.0];
+        let b = mat![10.0; 20.0; 30.0; 40.0; 50.0; 60.0];
+        assert!(a.is_col_vector());
+        assert!(b.is_col_vector());
+        assert_eq!(a.dot(&b), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn test_dot_nonvec() {
+        let a = mat![1.0, -1.0; 2.0, -2.0; 3.0, -3.0; 4.0, -4.0; 5.0, -5.0; 6.0, -6.0];
+        let b = mat![10.0; 20.0; 30.0; 40.0; 50.0; 60.0];
+        assert!(!a.is_vector());
+        assert!(b.is_col_vector());
+        a.dot(&b);
     }
 
 }

@@ -172,6 +172,10 @@ impl Matrix {
     }
     pub fn length(&self) -> usize { self.data.cols * self.data.rows }
     pub fn is_square(&self) -> bool { self.nrows() == self.ncols() }
+    pub fn is_vector(&self) -> bool { self.nrows() == 1 || self.ncols() == 1 }
+    pub fn is_row_vector(&self) -> bool { self.nrows() == 1 }
+    pub fn is_col_vector(&self) -> bool { self.ncols() == 1 }
+
     pub fn transpose(&self) -> Matrix {
         Matrix {
             data: self.data.clone(),
