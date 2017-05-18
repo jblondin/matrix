@@ -4,7 +4,7 @@ use lapack::c::Layout;
 use errors::*;
 
 use Matrix;
-use SubMatrix;
+use CloneSub;
 use LUDecompose;
 use decompose::{c_to_lapack_indexing};
 
@@ -55,9 +55,10 @@ impl Solve for Matrix {
         let mut ipiv = vec![0; n];
         let inout = self.clone();
         let soln = b.clone();
+        let (inout_data, soln_data) = (inout.data(), soln.data());
         let info = lapack::c::dgesv(Layout::ColumnMajor, n as i32, nrhs as i32,
-            &mut inout.data.values.borrow_mut()[..], lda as i32, &mut ipiv[..],
-            &mut soln.data.values.borrow_mut()[..], ldb as i32);
+            &mut inout_data.values_mut()[..], lda as i32, &mut ipiv[..],
+            &mut soln_data.values_mut()[..], ldb as i32);
 
         if info < 0 {
             Err(Error::from_kind(ErrorKind::SolveError(
@@ -85,9 +86,10 @@ impl Solve for Matrix {
         let mut ipiv = vec![0; n];
         let inout = self.clone();
         let soln = b.clone();
+        let (inout_data, soln_data) = (inout.data(), soln.data());
         let info = lapack::c::dsysv(Layout::ColumnMajor, b'U',  n as i32, nrhs as i32,
-            &mut inout.data.values.borrow_mut()[..], lda as i32, &mut ipiv[..],
-            &mut soln.data.values.borrow_mut()[..], ldb as i32);
+            &mut inout_data.values_mut()[..], lda as i32, &mut ipiv[..],
+            &mut soln_data.values_mut()[..], ldb as i32);
 
         if info < 0 {
             Err(Error::from_kind(ErrorKind::SolveError(
@@ -115,9 +117,10 @@ impl Solve for Matrix {
         } else {
             b.clone().vcat(&Matrix::zeros(n - m, nrhs))
         };
+        let (inout_data, soln_data) = (inout.data(), soln.data());
         let info = lapack::c::dgels(Layout::ColumnMajor, b'N', m as i32, n as i32, nrhs as i32,
-            &mut inout.data.values.borrow_mut()[..], lda as i32,
-            &mut soln.data.values.borrow_mut()[..], ldb as i32);
+            &mut inout_data.values_mut()[..], lda as i32,
+            &mut soln_data.values_mut()[..], ldb as i32);
 
         if info < 0 {
             Err(Error::from_kind(ErrorKind::SolveError(
@@ -129,11 +132,11 @@ impl Solve for Matrix {
         } else {
             if m > n {
                 Ok(ApproxSoln {
-                    soln: soln.subm(0..n, ..).unwrap(),
+                    soln: soln.clone_subm(0..n, ..).unwrap(),
                     resid: {
                         let mut v: Vec<f64> = Vec::new();
                         for j in 0..nrhs {
-                            v.push(soln.subm(n..m, j).unwrap().iter().fold(0.0,
+                            v.push(soln.clone_subm(n..m, j).unwrap().iter().fold(0.0,
                                 |acc, f| acc + f * f));
                         }
                         Some(v)
@@ -161,8 +164,9 @@ impl Solve for Matrix {
         let inout = lu.lu_data().clone();
         let ipiv = c_to_lapack_indexing(lu.ipiv_data());
 
+        let inout_data = inout.data();
         let info = lapack::c::dgetri(Layout::ColumnMajor, m as i32,
-            &mut inout.data.values.borrow_mut()[..], lda as i32,
+            &mut inout_data.values_mut()[..], lda as i32,
             &ipiv[..]);
 
         if info < 0 {

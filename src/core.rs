@@ -1,7 +1,8 @@
 use std::f64;
-use std::cell::RefCell;
+use std::cell::{Ref, RefMut, RefCell};
 use std::rc::Rc;
 use std::fmt;
+use std::ops::Range;
 
 use rand::{self, Rand, Rng};
 use rand::distributions::{IndependentSample, Normal};
@@ -33,14 +34,43 @@ impl Transpose {
 
 #[derive(Debug, Clone)]
 pub struct MatrixData {
-    pub values: RefCell<Vec<f64>>,
+    values: RefCell<Vec<f64>>,
     rows: usize,
     cols: usize,
+}
+impl MatrixData {
+    pub fn values(&self) -> Ref<Vec<f64>> {
+        self.values.borrow()
+    }
+    pub fn values_mut(&self) -> RefMut<Vec<f64>> {
+        self.values.borrow_mut()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MatrixRange(pub Range<(usize, usize)>);
+impl MatrixRange {
+    pub fn full(nrows: usize, ncols: usize) -> MatrixRange {
+        MatrixRange((0, 0)..(nrows, ncols))
+    }
+    fn nrows(&self) -> usize {
+        self.0.end.0 - self.0.start.0
+    }
+    fn ncols(&self) -> usize {
+        self.0.end.1 - self.0.start.1
+    }
+    fn start_row(&self) -> usize {
+        self.0.start.0
+    }
+    fn start_col(&self) -> usize {
+        self.0.start.1
+    }
 }
 
 #[derive(Debug)]
 pub struct Matrix {
     pub data: Rc<MatrixData>,
+    pub view: MatrixRange,
     pub transposed: Transpose,
 }
 
@@ -59,6 +89,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -69,6 +100,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -79,6 +111,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -90,6 +123,7 @@ impl Matrix {
                 rows: n,
                 cols: n,
             }),
+            view: MatrixRange::full(n, n),
             transposed: Transpose::No,
         };
 
@@ -114,6 +148,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -130,6 +165,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -147,6 +183,7 @@ impl Matrix {
                 rows: nrows,
                 cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
 
@@ -154,23 +191,23 @@ impl Matrix {
 
     pub fn nrows(&self) -> usize {
         match self.transposed {
-            Transpose::Yes  => { self.data.cols }
-            Transpose::No   => { self.data.rows }
+            Transpose::Yes  => { self.view.ncols() }
+            Transpose::No   => { self.view.nrows() }
         }
     }
     pub fn ncols(&self) -> usize {
         match self.transposed {
-            Transpose::Yes  => { self.data.rows }
-            Transpose::No   => { self.data.cols }
+            Transpose::Yes  => { self.view.nrows() }
+            Transpose::No   => { self.view.ncols() }
         }
     }
     pub fn dims(&self) -> (usize, usize) {
         match self.transposed {
-            Transpose::Yes  => { (self.data.cols, self.data.rows) }
-            Transpose::No   => { (self.data.rows, self.data.cols) }
+            Transpose::Yes  => { (self.view.ncols(), self.view.nrows()) }
+            Transpose::No   => { (self.view.nrows(), self.view.ncols()) }
         }
     }
-    pub fn length(&self) -> usize { self.data.cols * self.data.rows }
+    pub fn length(&self) -> usize { self.view.ncols() * self.view.nrows() }
     pub fn is_square(&self) -> bool { self.nrows() == self.ncols() }
     pub fn is_vector(&self) -> bool { self.nrows() == 1 || self.ncols() == 1 }
     pub fn is_row_vector(&self) -> bool { self.nrows() == 1 }
@@ -179,6 +216,7 @@ impl Matrix {
     pub fn transpose(&self) -> Matrix {
         Matrix {
             data: self.data.clone(),
+            view: self.view.clone(),
             transposed: self.transposed.t()
         }
     }
@@ -188,7 +226,7 @@ impl Matrix {
     pub fn iter(&self) -> MatrixIter {
         MatrixIter {
             mat: &self,
-            index: 0,
+            current_loc: (0, 0),
         }
     }
 
@@ -214,13 +252,15 @@ impl Matrix {
         let mut data_vec: Vec<f64> = self.iter().collect();
         data_vec.append(&mut other.iter().collect());
 
-        assert_eq!(data_vec.len(), self.nrows() * (self.ncols() + other.ncols()));
+        let (nrows, ncols) = (self.nrows(), self.ncols() + other.ncols());
+        assert_eq!(data_vec.len(), nrows * ncols);
         Matrix {
             data: Rc::new(MatrixData {
                 values: RefCell::new(data_vec),
-                rows: self.nrows(),
-                cols: self.ncols() + other.ncols(),
+                rows: nrows,
+                cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
@@ -238,21 +278,31 @@ impl Matrix {
             }
         }
 
-        assert_eq!(data_vec.len(), (self.nrows() + other.nrows()) * self.ncols());
+        let (nrows, ncols) = (self.nrows() + other.nrows(), self.ncols());
+        assert_eq!(data_vec.len(), nrows * ncols);
         Matrix {
             data: Rc::new(MatrixData {
                 values: RefCell::new(data_vec),
-                rows: self.nrows() + other.nrows(),
-                cols: self.ncols(),
+                rows: nrows,
+                cols: ncols,
             }),
+            view: MatrixRange::full(nrows, ncols),
             transposed: Transpose::No,
         }
     }
 
-    pub fn create_view(&self) -> Matrix {
-        Matrix {
-            data: self.data.clone(),
-            transposed: self.transposed,
+    pub fn is_subview(&self) -> bool {
+        self.nrows() * self.ncols() != self.data.rows * self.data.cols
+    }
+    pub fn data(&self) -> Rc<MatrixData> {
+        if self.is_subview() {
+            Rc::new(MatrixData {
+                values: RefCell::new(self.iter().collect::<Vec<f64>>()),
+                rows: self.nrows(),
+                cols: self.ncols(),
+            })
+        } else {
+            self.data.clone()
         }
     }
 
@@ -283,16 +333,21 @@ impl Matrix {
 
     #[inline]
     fn index(&self, r: usize, c: usize) -> usize {
-        let index = c * self.nrows() + r;
         match self.transposed {
-            Transpose::Yes  => { self.trindex(index) }
-            Transpose::No   => { index }
+            Transpose::Yes  => {
+                let (r, c) = (self.view.start_col() + r, self.view.start_row() + c);
+                self.trindex(c * self.data.cols + r)
+            }
+            Transpose::No   => {
+                let (r, c) = (self.view.start_row() + r, self.view.start_col() + c);
+                c * self.data.rows + r
+            }
         }
     }
     #[inline]
     fn trindex(&self, index: usize) -> usize {
-        (index % self.nrows()) * self.ncols()
-            + (index as f32 / self.nrows() as f32).floor() as usize
+        (index % self.data.cols) * self.data.rows
+            + (index as f32 / self.data.cols as f32).floor() as usize
     }
 }
 
@@ -316,23 +371,21 @@ impl Clone for Matrix {
 
 pub struct MatrixIter<'a> {
     mat: &'a Matrix,
-    index: usize,
+    current_loc: (usize, usize),
 }
 impl<'a> Iterator for MatrixIter<'a> {
     type Item = f64;
 
     fn next(&mut self) -> Option<f64> {
-        if self.index >= self.mat.length() { return None }
-        let val = match self.mat.transposed {
-            Transpose::No => {
-                self.mat.data.values.borrow().get(self.index).cloned()
-            }
-            Transpose::Yes => {
-                // do conversion from one indexing style to other
-                self.mat.data.values.borrow().get(self.mat.trindex(self.index)).cloned()
-            }
-        };
-        self.index += 1;
+        if self.current_loc.1 >= self.mat.ncols() { return None }
+
+        let val = self.mat.get(self.current_loc.0, self.current_loc.1).ok();
+
+        self.current_loc.0 += 1;
+        if self.current_loc.0 >= self.mat.nrows() {
+            self.current_loc.0 = 0;
+            self.current_loc.1 += 1;
+        }
         val
     }
 }
@@ -418,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_rand() {
-        use subm::SubMatrix;
+        use subm::CloneSub;
 
         let (m, n) = (100, 100);
         let a = Matrix::rand(m, n);
@@ -428,12 +481,12 @@ mod tests {
         assert!(a.iter().fold(f64::NEG_INFINITY, |acc, f| acc.max(f)) < 1.0);
         assert!(a.iter().fold(f64::INFINITY, |acc, f| acc.min(f)) >= 0.0);
 
-        println!("{:#?}", a.subm(0..5, 0..5));
+        println!("{:#?}", a.clone_subm(0..5, 0..5));
     }
 
     #[test]
     fn test_randsn() {
-        use subm::SubMatrix;
+        use subm::CloneSub;
 
         let (m, n) = (100, 100);
         let a = Matrix::randsn(m, n);
@@ -446,12 +499,12 @@ mod tests {
         println!("{:#?} {:#?}", rares, limit);
         assert!(rares < limit);
 
-        println!("{:#?}", a.subm(0..5, 0..5));
+        println!("{:#?}", a.clone_subm(0..5, 0..5));
     }
 
     #[test]
     fn test_randn() {
-        use subm::SubMatrix;
+        use subm::CloneSub;
 
         let (m, n) = (100, 100);
         let (mean, stdev) = (10.0, 3.0);
@@ -468,7 +521,7 @@ mod tests {
         println!("{:#?} {:#?}", rares, limit);
         assert!(rares < limit);
 
-        println!("{:#?}", a.subm(0..5, 0..5));
+        println!("{:#?}", a.clone_subm(0..5, 0..5));
     }
 
 

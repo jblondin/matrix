@@ -11,11 +11,11 @@ mod errors;
 #[macro_use] mod macro_def;
 
 pub mod core;
-pub use core::{Matrix, MatrixIter, Transpose, SymmetrizeMethod};
+pub use core::{Matrix, MatrixRange, MatrixIter, Transpose, SymmetrizeMethod};
 
 mod ops;
 mod subm;
-pub use subm::SubMatrix;
+pub use subm::{SubMatrix, CloneSub};
 
 mod decompose;
 pub use decompose::{Compose,

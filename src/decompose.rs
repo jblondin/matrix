@@ -112,8 +112,9 @@ impl LUDecompose for Matrix {
 
         let lu = self.clone();
         let mut ipiv: Vec<i32> = vec![0; min(m, n)];
+        let lu_data = lu.data();
         let info = lapack::c::dgetrf(Layout::ColumnMajor, m as i32, n as i32,
-            &mut lu.data.values.borrow_mut()[..], lda as i32,
+            &mut lu_data.values_mut()[..], lda as i32,
             &mut ipiv[..]);
 
         if info < 0 {
@@ -185,8 +186,9 @@ impl QRDecompose for Matrix {
             tau: vec![0.0; min(m, n)],
         };
 
+        let qr_data = qr.qr.data();
         let info = lapack::c::dgeqrfp(Layout::ColumnMajor, m as i32, n as i32,
-            &mut qr.qr.data.values.borrow_mut()[..], lda as i32,
+            &mut qr_data.values_mut()[..], lda as i32,
             &mut qr.tau[..]);
 
         if info < 0 {
@@ -240,8 +242,9 @@ impl CholeskyDecompose for Matrix {
             a: self.clone()
         };
 
+        let chol_data = chol.a.data();
         let info = lapack::c::dpotrf(Layout::ColumnMajor, b'L', n as i32,
-            &mut chol.a.data.values.borrow_mut()[..], lda as i32);
+            &mut chol_data.values_mut()[..], lda as i32);
 
         if info < 0 {
             Err(Error::from_kind(ErrorKind::DecompositionError(
@@ -313,10 +316,11 @@ impl SingularValueDecompose for Matrix {
         let input = self.clone();
         let mut singular_values = vec![0.0; mindim];
 
+        let (input_data, u_data, vt_data) = (input.data(), u.data(), vt.data());
         let info = lapack::c::dgesdd(Layout::ColumnMajor, b'A', m as i32, n as i32,
-            &mut input.data.values.borrow_mut()[..], lda as i32, &mut singular_values[..],
-            &mut u.data.values.borrow_mut()[..], ldu as i32,
-            &mut vt.data.values.borrow_mut()[..], ldvt as i32);
+            &mut input_data.values_mut()[..], lda as i32, &mut singular_values[..],
+            &mut u_data.values_mut()[..], ldu as i32,
+            &mut vt_data.values_mut()[..], ldvt as i32);
 
         if info < 0 {
             Err(Error::from_kind(ErrorKind::DecompositionError(

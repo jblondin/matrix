@@ -107,9 +107,13 @@ pub fn gemv(a: &Matrix, b: &Matrix, alpha: f64, c_beta: Option<(&Matrix, f64)>)
         Transpose::No   => { k }
     };
 
+    let (a_data, b_data, out_data) = (a.data(), b.data(), out.data());
     blas::c::dgemm(Layout::ColumnMajor, a.transposed.convert_to_blas(),
-        b.transposed.convert_to_blas(), m, n, k, alpha, &a.data.values.borrow()[..], lda,
-        &b.data.values.borrow()[..], ldb, beta, &mut out.data.values.borrow_mut()[..], m);
+        b.transposed.convert_to_blas(), m, n, k, alpha,
+        &a_data.values()[..], lda,
+        &b_data.values()[..], ldb, beta,
+        &mut out_data.values_mut()[..], m);
+
     out
 }
 
@@ -209,7 +213,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
 
     }
@@ -225,7 +230,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
                 vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
     }
 
@@ -240,7 +246,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
     }
 
@@ -255,7 +262,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
     }
 
@@ -270,7 +278,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
     }
 
@@ -283,7 +292,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
     }
 
@@ -296,7 +306,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
     }
 
@@ -309,7 +320,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
     }
 
@@ -322,7 +334,8 @@ mod tests {
 
         assert_eq!(out.nrows(), m);
         assert_eq!(out.ncols(), n);
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
     }
     #[test]
@@ -333,7 +346,8 @@ mod tests {
 
         let out = a + &b;
 
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
     }
 
@@ -345,7 +359,8 @@ mod tests {
 
         let out = a + b;
 
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
     }
 
@@ -357,7 +372,8 @@ mod tests {
 
         let out = &a + b;
 
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
     }
 
@@ -369,7 +385,8 @@ mod tests {
 
         let out = &a + &b;
 
-        assert_eq!(*out.data.values.borrow(),
+        let out_data = out.data();
+        assert_eq!(*out_data.values(),
             vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
     }
 
@@ -381,7 +398,8 @@ mod tests {
 
         let out = a - &b;
 
-        assert_eq!(*out.data.values.borrow()    , vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
     }
 
     #[test]
@@ -392,7 +410,8 @@ mod tests {
 
         let out = a - b;
 
-        assert_eq!(*out.data.values.borrow(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
     }
 
     #[test]
@@ -403,7 +422,8 @@ mod tests {
 
         let out = &a - b;
 
-        assert_eq!(*out.data.values.borrow(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
     }
 
     #[test]
@@ -414,7 +434,8 @@ mod tests {
 
         let out = &a - &b;
 
-        assert_eq!(*out.data.values.borrow(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
     }
 
     #[test]
@@ -424,7 +445,8 @@ mod tests {
 
         let out = -a;
 
-        assert_eq!(*out.data.values.borrow(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
     }
 
     #[test]
@@ -434,7 +456,8 @@ mod tests {
 
         let out = -&a;
 
-        assert_eq!(*out.data.values.borrow(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
+        let out_data = out.data();
+        assert_eq!(*out_data.values(), vec![-2.0, -7.0, -6.0, -2.0, 0.0, -7.0, -4.0, -2.0]);
     }
 
     #[test]
