@@ -27,3 +27,6 @@ pub use decompose::{Compose,
 
 mod solve;
 pub use solve::{Solve, GramSolve};
+
+mod norm;
+pub use norm::{Norm, VectorNorm};
