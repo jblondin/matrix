@@ -32,4 +32,4 @@ pub use solve::{Solve, GramSolve};
 mod map;
 
 mod norm;
-pub use norm::{Norm, VectorNorm};
+pub use norm::{Norm, VectorNorm, MatNorm, MatrixNorm};
