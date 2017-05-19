@@ -28,5 +28,7 @@ pub use decompose::{Compose,
 mod solve;
 pub use solve::{Solve, GramSolve};
 
+mod map;
+
 mod norm;
 pub use norm::{Norm, VectorNorm};
