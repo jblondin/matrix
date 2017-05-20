@@ -207,6 +207,14 @@ impl Matrix {
             Transpose::No   => { (self.view.nrows(), self.view.ncols()) }
         }
     }
+    pub fn mindim(&self) -> usize {
+        let (m, n) = self.dims();
+        if m < n { m } else { n }
+    }
+    pub fn maxdim(&self) -> usize {
+        let (m, n) = self.dims();
+        if m > n { m } else { n }
+    }
     pub fn length(&self) -> usize { self.view.ncols() * self.view.nrows() }
     pub fn is_square(&self) -> bool { self.nrows() == self.ncols() }
     pub fn is_vector(&self) -> bool { self.nrows() == 1 || self.ncols() == 1 }
