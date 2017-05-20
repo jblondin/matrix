@@ -260,6 +260,111 @@ impl CholeskyDecompose for Matrix {
 }
 
 #[derive(Debug, Clone)]
+pub struct Eigen<T, U> {
+    eigs: (U, U), // real and imaginary parts
+    vl: Option<T>,
+    vr: Option<T>,
+}
+impl Eigen<Matrix, Vec<f64>> {
+    pub fn eigenvalues(&self) -> (&Vec<f64>, &Vec<f64>) {
+        (self.eigenvalues_real(), self.eigenvalues_imag())
+    }
+    pub fn has_complex_eigenvalues(&self) -> bool {
+        self.eigenvalues_imag().iter().fold(0.0, |acc, &f| if acc != f { 1.0 } else { 0.0 }) != 0.0
+    }
+    pub fn eigenvalues_real(&self) -> &Vec<f64> {
+        &self.eigs.0
+    }
+    pub fn eigenvalues_imag(&self) -> &Vec<f64> {
+        &self.eigs.1
+    }
+    pub fn eigenvectors_left(&self) -> Option<&Matrix> {
+        self.vl.as_ref()
+    }
+    pub fn eigenvectors_right(&self) -> Option<&Matrix> {
+        self.vr.as_ref()
+    }
+}
+impl Compose<Matrix> for Eigen<Matrix, Vec<f64>> {
+    fn compose(&self) -> Matrix {
+        assert!(!self.has_complex_eigenvalues());
+        assert!(self.vl.is_some());
+        assert!(self.vr.is_some());
+        self.eigenvectors_right().unwrap() * Matrix::diag(self.eigenvalues_real())
+            * self.eigenvectors_left().unwrap().t()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EigenOptions {
+    BothEigenvectors,
+    LeftEigenvectorsOnly,
+    RightEigenvectorsOnly,
+    EigenvaluesOnly
+}
+pub trait EigenDecompose: Sized {
+    type EigenvalueStore;
+
+    fn eigen(&self, opts: EigenOptions) -> Result<Eigen<Self, Self::EigenvalueStore>>;
+}
+impl EigenDecompose for Matrix {
+    type EigenvalueStore = Vec<f64>;
+
+    fn eigen(&self, opts: EigenOptions) -> Result<Eigen<Matrix, Vec<f64>>> {
+        let (m, n) = self.dims();
+        if m != n {
+            return Err(Error::from_kind(ErrorKind::DecompositionError(
+                "Eigendecomposition only available for square matrices".to_string())))
+        }
+
+        let jobvl = match opts {
+            EigenOptions::BothEigenvectors => { b'V' }
+            EigenOptions::LeftEigenvectorsOnly => { b'V' }
+            _ => { b'N' }
+        };
+        let jobvr = match opts {
+            EigenOptions::BothEigenvectors => { b'V' }
+            EigenOptions::RightEigenvectorsOnly => { b'V' }
+            _ => { b'N' }
+        };
+
+        let inout = self.clone();
+        let lda = m;
+
+        let mut wr = vec![0.0; n];
+        let mut wi = vec![0.0; n];
+
+        let ldvl = if jobvl == b'V' { n } else { 1 };
+        let vl = Matrix::zeros(ldvl, n);
+
+        let ldvr = if jobvr == b'V' { n } else { 1 };
+        let vr = Matrix::zeros(ldvr, n);
+
+        let (inout_data, vl_data, vr_data) = (inout.data(), vl.data(), vr.data());
+        let info = lapack::c::dgeev(Layout::ColumnMajor, jobvl, jobvr, n as i32,
+            &mut inout_data.values_mut()[..], lda as i32,
+            &mut wr[..], &mut wi[..],
+            &mut vl_data.values_mut()[..], ldvl as i32,
+            &mut vr_data.values_mut()[..], ldvr as i32);
+
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("Eigendecomposition: \
+                    Invalid call to dgeev in argument {}", -info))))
+        } else if info > 0 {
+            Err(Error::from_kind(ErrorKind::DecompositionError(
+                format!("Eigendecomposition: did not converge starting at element {}", info))))
+        } else {
+            Ok(Eigen {
+                eigs: (wr, wi),
+                vl: if jobvl == b'V' { Some(vl) } else { None },
+                vr: if jobvr == b'V' { Some(vr) } else { None },
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SVD<T, U> {
     u: T,
     sigma: U,
@@ -345,6 +450,8 @@ mod tests {
 
     use rand::{self, Rng};
     use std::cmp::Ordering;
+
+    use subm::SubMatrix;
 
     fn lu_test_driver(m: usize, n: usize) {
         let a = Matrix::randsn(m, n);
@@ -539,6 +646,150 @@ mod tests {
         }
 
     }
+
+    fn check_vl(a: &Matrix, vl: &Matrix, eigs: &(&Vec<f64>, &Vec<f64>)) {
+        assert!(vl.is_square());
+        assert_eq!(vl.dims(), a.dims());
+        for j in 0..vl.ncols() {
+            let v = vl.subm(.., j).unwrap();
+            assert_fpvec_eq!(v.t() * a, eigs.0[j] * v.t());
+        }
+    }
+    fn check_vr(a: &Matrix, vr: &Matrix, eigs: &(&Vec<f64>, &Vec<f64>)) {
+        assert!(vr.is_square());
+        assert_eq!(vr.dims(), a.dims());
+        for j in 0..vr.ncols() {
+            let v = vr.subm(.., j).unwrap();
+            assert_fpvec_eq!(a * &v, eigs.0[j] * &v);
+        }
+    }
+    fn eigen_test_driver(a: Matrix, opts: EigenOptions) -> Result<Eigen<Matrix, Vec<f64>>> {
+        let (m, n) = a.dims();
+        let eigen = a.eigen(opts);
+
+        match eigen {
+            Ok(eigen)   => {
+                // if eigen completed, A must be square
+                assert_eq!(m, n);
+
+                match opts {
+                    EigenOptions::BothEigenvectors => {
+                        let vl = eigen.eigenvectors_left().unwrap();
+                        let vr = eigen.eigenvectors_right().unwrap();
+                        let eigs = eigen.eigenvalues();
+
+                        // not dealing with complex eigenvalues currently
+                        assert!(!eigen.has_complex_eigenvalues());
+
+                        // check if eigenvalues / vectors are valid
+                        check_vl(&a, &vl, &eigs);
+                        check_vr(&a, &vr, &eigs);
+
+                        // make sure the eigendecomposition recomposes properly
+                        let a_composed = eigen.compose();
+                        println!("diff: {}", &a - &a_composed);
+                        assert_fpvec_eq!(a, a_composed);
+
+                        // also try to compose manually
+                        let a_composedmanual = vr * Matrix::diag(&eigs.0) * vl.t();
+                        println!("diff: {}", &a - &a_composedmanual);
+                        assert_fpvec_eq!(a, a_composedmanual);
+
+                    }
+                    EigenOptions::LeftEigenvectorsOnly => {
+                        let vl = eigen.eigenvectors_left().unwrap();
+                        assert!(eigen.eigenvectors_right().is_none());
+                        check_vl(&a, &vl, &eigen.eigenvalues());
+                    }
+                    EigenOptions::RightEigenvectorsOnly => {
+                        let vr = eigen.eigenvectors_right().unwrap();
+                        assert!(eigen.eigenvectors_left().is_none());
+                        check_vr(&a, &vr, &eigen.eigenvalues());
+                    }
+                    EigenOptions::EigenvaluesOnly => {
+                        assert!(eigen.eigenvectors_left().is_none());
+                        assert!(eigen.eigenvectors_right().is_none());
+                    }
+                }
+
+                Ok(eigen)
+            }
+            Err(e)  => { Err(e) }
+        }
+    }
+
+    #[test]
+    fn test_eigen_both_eigenvectors() {
+        let (m, n) = (8, 6);
+        let a = Matrix::randsn(m, n);
+        let b = a.t() * a;
+        println!("{}", b);
+
+        eigen_test_driver(b, EigenOptions::BothEigenvectors).unwrap();
+    }
+    #[test]
+    fn test_eigen_left_eigenvectors() {
+        let (m, n) = (6, 8);
+        let a = Matrix::randsn(m, n);
+        let b = a.t() * a;
+
+        eigen_test_driver(b, EigenOptions::LeftEigenvectorsOnly).unwrap();
+    }
+    #[test]
+    fn test_eigen_right_eigenvectors() {
+        let (m, n) = (6, 8);
+        let a = Matrix::randsn(m, n);
+        let b = a.t() * a;
+
+        eigen_test_driver(b, EigenOptions::RightEigenvectorsOnly).unwrap();
+    }
+    #[test]
+    fn test_eigen_no_eigenvectors() {
+        let (m, n) = (6, 8);
+        let a = Matrix::randsn(m, n);
+        let b = a.t() * a;
+
+        eigen_test_driver(b, EigenOptions::EigenvaluesOnly).unwrap();
+    }
+    #[test]
+    fn test_eigenvalues() {
+        let (m, n) = (8, 6);
+        let a = Matrix::randsn(m, n);
+        let b = a.t() * &a;
+        println!("{}", (&b - b.t()).iter().fold(0.0, |acc, f| acc + f));
+
+        let eigen = b.eigen(EigenOptions::EigenvaluesOnly).expect("Eigendecomposition failed");
+        let svd = a.svd().expect("SVD failed");
+
+        // eigenvalues of A'A should be squares of singular values of A
+        assert!(!eigen.has_complex_eigenvalues());
+        let mut eigenvalues = eigen.eigenvalues_real().clone();
+        eigenvalues.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut svs_sqrd = svd.sigma.iter().map(|f| f * f).collect::<Vec<f64>>();
+        svs_sqrd.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("eigen: {:?}", eigenvalues);
+        println!("svs_sqrd: {:?}", svs_sqrd);
+        println!("diff: {:?}", eigenvalues.iter().zip(&svs_sqrd).map(|(e, s)| e - s)
+            .collect::<Vec<f64>>());
+        assert_fpvec_eq!(eigenvalues, svs_sqrd);
+    }
+    #[test]
+    fn test_eigen_nonsquare() {
+        let (m, n) = (8, 6);
+        let a_nonsquare = Matrix::randsn(m, n);
+
+        let eigen_res = eigen_test_driver(a_nonsquare, EigenOptions::BothEigenvectors);
+        assert!(eigen_res.is_err());
+        let e = eigen_res.unwrap_err();
+        println!("{:?}", e.kind());
+        match *e.kind() {
+            ErrorKind::DecompositionError(ref m) => {
+                assert!(m.find("square").is_some());
+            },
+            _ => { panic!(format!("Expected DecompositionError, found: {:?}", e.kind())) }
+        }
+    }
+
 
     fn svd_test_driver(u: Matrix, sigma_diag: Vec<f64>, v: Matrix) {
         let (m, n) = (u.nrows(), v.nrows());

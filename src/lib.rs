@@ -22,6 +22,7 @@ pub use decompose::{Compose,
     LU, LUDecompose,
     QR, QRDecompose,
     Cholesky, CholeskyDecompose,
+    Eigen, EigenOptions, EigenDecompose,
     SVD, SingularValueDecompose
 };
 
