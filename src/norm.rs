@@ -1,6 +1,15 @@
 use std::f64;
+
+use lapack;
+use lapack::c::Layout;
+
 use Matrix;
+use EigenDecompose;
+use EigenOptions;
 use SingularValueDecompose;
+use solve::Solve;
+
+use errors::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Norm {
@@ -109,6 +118,104 @@ impl MatrixNorm for Matrix {
             MatNorm::Max             => { self.entrywise_norm(Norm::Inf) }
             MatNorm::Schatten(nt)    => { self.schatten_norm(nt) }
             MatNorm::Nuclear         => { self.schatten_norm(Norm::L1) }
+        }
+    }
+}
+
+impl Matrix {
+    fn rcond_inner(&self, nt: MatNorm) -> Result<f64> {
+        if !self.is_square() {
+            return Err(Error::from_kind(ErrorKind::CondError(
+                "rcond called with non-square matrix".to_string())))
+        }
+
+        let norm_spec = match nt {
+            MatNorm::InducedL1 => { b'1' }
+            MatNorm::InducedInf => { b'I' }
+            _ => { panic!("rcond_inner only allows InducedL1 or InducedInf MatNorm"); }
+        };
+        let norm_a = self.matrix_norm(nt);
+
+        let m = self.nrows();
+        let lda = m;
+
+        let lu = self.clone();
+        let mut ipiv: Vec<i32> = vec![0; m];
+        let lu_data = lu.data();
+        let info = lapack::c::dgetrf(Layout::ColumnMajor, m as i32, m as i32,
+            &mut lu_data.values_mut()[..], lda as i32,
+            &mut ipiv[..]);
+
+        if info < 0 {
+            return Err(Error::from_kind(ErrorKind::CondError(
+                format!("rcond: Invalid call to dgetrf in argument {}", -info))))
+        };
+
+        let mut rcond = 0.0;
+        let info = lapack::c::dgecon(Layout::ColumnMajor, norm_spec, m as i32,
+            &lu_data.values()[..], lda as i32, norm_a, &mut rcond);
+
+        if info < 0 {
+            Err(Error::from_kind(ErrorKind::CondError(
+                format!("rcond: Invalid call to dgecon in argument {}", -info))))
+        } else {
+            Ok(rcond)
+        }
+    }
+    // computes the reciprocal of the L1-norm condition number of the matrix
+    pub fn rcond(&self) -> Result<f64> {
+        self.rcond_inner(MatNorm::InducedL1)
+    }
+    // computer the recpirocal of the Inf-norm condition number of the matrix
+    pub fn rcond_inf(&self) -> Result<f64> {
+        self.rcond_inner(MatNorm::InducedInf)
+    }
+
+    // computes the L2-norm condition number
+    pub fn cond(&self) -> Result<f64> {
+        self.cond_nt(MatNorm::InducedL2)
+    }
+
+    // computes the condition number using the specified matrix norm
+    pub fn cond_nt(&self, norm_type: MatNorm) -> Result<f64> {
+        match norm_type {
+            MatNorm::InducedL2 | MatNorm::Spectral => {
+                // SVD, max sv / min sv
+                let svd = self.svd()?;
+                let (max_sv, min_sv) = svd.sigmavec().iter().fold(
+                    (f64::NEG_INFINITY, f64::INFINITY),
+                    |acc, f| (f.max(acc.0), f.min(acc.1))
+                );
+                Ok(max_sv / min_sv)
+
+            }
+            MatNorm::InducedL1 => {
+                self.rcond().map(|f| 1.0 / f)
+            }
+            MatNorm::InducedInf => {
+                self.rcond_inf().map(|f| 1.0 / f)
+            }
+            MatNorm::Frobenius | MatNorm::Entrywise(Norm::L2) => {
+                // cond = sqrt(trace(A'*A)) * sqrt(trace(Ainv'*Ainv))
+                // B = A' * A
+                // Binv = inv(A' * A) = Ainv * Ainv'
+                // trace(Ainv' * Ainv) = trace(Ainv * Ainv'), so tr(Binv) = tr(Ainv' * Ainv)
+                // cond = sqrt(tr(B)) * sqrt(tr(Binv))
+                // eigendecomposition B = Pinv * D * P
+                // Binv = inv(Pinv * D * P) = Pinv * Dinv * P
+                // Dinv = 1.0 / D
+                // cond = sqrt(sum(diag(D))) * sqrt(sum(1.0 / diag(D)))
+                let b = self.t() * self;
+                let eigendec = b.eigen(EigenOptions::EigenvaluesOnly)?;
+                assert!(!eigendec.has_complex_eigenvalues());
+
+                let eigs = eigendec.eigenvalues_real();
+                Ok(eigs.iter().fold(0.0, |acc, f| acc + f).sqrt() *
+                    eigs.iter().fold(0.0, |acc, f| acc + 1.0 / f).sqrt())
+            }
+            _ => {
+                Ok(self.matrix_norm(norm_type) * self.inverse()?.matrix_norm(norm_type))
+            }
         }
     }
 }
@@ -329,4 +436,94 @@ mod tests {
             a.matrix_norm(MatNorm::Schatten(Norm::Inf)));
     }
 
+    #[test]
+    fn test_rcond_l1() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0];
+        let acond = a.rcond().unwrap();
+        println!("{}", acond);
+
+        assert_fp_eq!(acond, 1.0 / 55.5);
+    }
+    #[test]
+    fn test_rcond_inf() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0];
+        let acond = a.rcond_inf().unwrap();
+        println!("{}", acond);
+
+        assert_fp_eq!(acond, 1.0 / 54.0);
+    }
+    #[test]
+    fn test_rcond_nonsquare() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let acond_res = a.rcond();
+
+        assert!(acond_res.is_err());
+        let e = acond_res.unwrap_err();
+        println!("{:?}", e.kind());
+        match *e.kind() {
+            ErrorKind::CondError(ref m) => {
+                assert!(m.find("non-square").is_some());
+            },
+            _ => { panic!(format!("Expected CondError, found: {:?}", e.kind())) }
+        }
+    }
+    #[test]
+    fn test_cond_fro() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let acond = a.cond_nt(MatNorm::Frobenius).unwrap();
+        assert_fp_eq!(acond, 43.39603897);
+        assert_fp_eq!(acond, a.cond_nt(MatNorm::Entrywise(Norm::L2)).unwrap());
+
+        let b = a.t() * &a;
+        let bcond = b.cond_nt(MatNorm::Frobenius).unwrap();
+        assert_fp_eq!(bcond, 1538.9530598);
+        assert_fp_eq!(bcond, b.cond_nt(MatNorm::Entrywise(Norm::L2)).unwrap());
+    }
+    #[test]
+    fn test_cond_spectral() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let acond = a.cond_nt(MatNorm::InducedL2).unwrap();
+        println!("{}", acond);
+        assert_fp_eq!(acond, 38.59574132);
+        assert_fp_eq!(acond, a.cond_nt(MatNorm::Spectral).unwrap());
+    }
+    #[test]
+    fn test_cond_inf() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let b = a.t() * &a;
+        let bcond = b.cond_nt(MatNorm::InducedInf).unwrap();
+        println!("{}", bcond);
+        assert_fp_eq!(bcond, 1812.4096386);
+        assert_fp_eq!(bcond, 1.0 / b.rcond_inf().unwrap());
+
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0];
+        let acond = a.cond_nt(MatNorm::InducedInf).unwrap();
+        assert_fp_eq!(acond, 54.0);
+    }
+    #[test]
+    fn test_cond_l1() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let b = a.t() * &a;
+        let bcond = b.cond_nt(MatNorm::InducedL1).unwrap();
+        println!("{}", bcond);
+        assert_fp_eq!(bcond, 1812.4096386);
+        assert_fp_eq!(bcond, 1.0 / b.rcond().unwrap());
+
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0];
+        let acond = a.cond_nt(MatNorm::InducedL1).unwrap();
+        assert_fp_eq!(acond, 55.5);
+    }
+    #[test]
+    fn test_cond_other() {
+        let a = mat![-1.0, 2.0, -3.0; 4.0, 5.0, -6.0; -7.0, 8.0, -9.0; -10.0, -11.0, 12.0];
+        let b = a.t() * &a;
+
+        let bcond = b.cond_nt(MatNorm::Entrywise(Norm::L1)).unwrap();
+        println!("{}", bcond);
+        assert_fp_eq!(bcond, 8394.3105756);
+
+        let bcond = b.cond_nt(MatNorm::Entrywise(Norm::P(2.5))).unwrap();
+        println!("{}", bcond);
+        assert_fp_eq!(bcond, 1123.3761173);
+    }
 }

@@ -12,5 +12,9 @@ error_chain! {
             description("Solver error")
             display("Solver error: {}", s)
         }
+        CondError(s: String) {
+            description("Condition error")
+            display("Condition error: {}", s)
+        }
     }
 }
