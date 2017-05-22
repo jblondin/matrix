@@ -4,6 +4,7 @@ use lapack::c::Layout;
 use errors::*;
 
 use Matrix;
+use SubMatrix;
 use CloneSub;
 use LUDecompose;
 use decompose::{c_to_lapack_indexing};
@@ -136,7 +137,7 @@ impl Solve for Matrix {
                     resid: {
                         let mut v: Vec<f64> = Vec::new();
                         for j in 0..nrhs {
-                            v.push(soln.clone_subm(n..m, j).unwrap().iter().fold(0.0,
+                            v.push(soln.subm(n..m, j).unwrap().iter().fold(0.0,
                                 |acc, f| acc + f * f));
                         }
                         Some(v)
@@ -567,6 +568,65 @@ mod tests {
 
         assert_error!(solve_res, ErrorKind::SolveError, "right-hand side", "SolveError");
     }
+    #[test]
+    fn test_solve_nrhs_square() {
+        let m = 6;
+        let nrhs = 3;
+        let a = Matrix::randsn(m, m);
+        println!("{}", a);
+
+        let b = Matrix::randsn(m, nrhs);
+
+        let x = solve_driver(&a, &b).expect("solve failed unexpectedly");
+
+        assert_eq!(x.dims(), (m, nrhs));
+        println!("a*x\n{}\nb\n{}", &a * &x, &b);
+        assert_fpvec_eq!(&a * &x, &b);
+    }
+    #[test]
+    fn test_solve_nrhs_wide() {
+        let (m, n) = (6, 8);
+        let nrhs = 3;
+        let a = Matrix::randsn(m, n);
+        println!("{}", a);
+
+        let b = Matrix::randsn(m, nrhs);
+
+        let x = solve_driver(&a, &b).expect("solve failed unexpectedly");
+
+        assert_eq!(x.dims(), (n, nrhs));
+        println!("a*x\n{}\nb\n{}", &a * &x, &b);
+        assert_fpvec_eq!(&a * &x, &b);
+    }
+    #[test]
+    fn test_solve_approx_nrhs_narrow() {
+        let (m, n, nrhs) = (8, 6, 3);
+        let a = Matrix::randsn(m, n);
+
+        let b = Matrix::randsn(m, nrhs);
+
+        let approx_soln = solve_approx_driver(&a, &b).expect("solve_approx failed unexpectedly");
+        assert_eq!(approx_soln.soln.dims(), (n, nrhs));
+
+        println!("soln\n{}", approx_soln.soln);
+        assert!(approx_soln.resid.is_some());
+        let resid_vec = approx_soln.resid.unwrap();
+        println!("resids\n{:?}", resid_vec);
+        assert_eq!(resid_vec.len(), nrhs);
+        let ax = &a * &approx_soln.soln;
+        println!("a*x\n{}\nb\n{}\nax-b\n{}", ax, b, &ax - &b);
+        assert_eq!(ax.dims(), (m, nrhs));
+        for k in 0..nrhs {
+            let mut sumsq = 0.0;
+            for i in 0..m {
+                let err = b.get(i, k).unwrap() - ax.get(i, k).unwrap();
+                sumsq += err * err;
+            }
+            println!("resid:{} sumsq:{} diff:{}", resid_vec[k], sumsq,
+                (sumsq - resid_vec[k]).abs());
+            assert_fp_eq!(sumsq, resid_vec[k], 1e-8);
+        }
+    }
 
     fn inverse_driver(a: &Matrix) -> Result<Matrix> {
         a.inverse().map(|x| {
@@ -606,14 +666,12 @@ mod tests {
         assert_error!(inverse_res, ErrorKind::SolveError, "singular", "SolveError");
     }
 
-
     fn gram_solve_driver(a: &Matrix, b: &Matrix) -> Result<Matrix> {
         a.gram_solve(b).map(|x| {
             assert_eq!(x.dims(), (a.ncols(), b.ncols()));
             x
         })
     }
-
     #[test]
     fn test_gram_solve() {
         let a = Matrix::ones(5, 1).hcat(
