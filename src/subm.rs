@@ -21,8 +21,8 @@ pub trait SubMatrix<R, S> {
 fn fill_clone_subm(src: &Matrix, startr: usize, endr: usize, startc: usize, endc: usize)
         -> Result<Matrix> {
     let mut vec: Vec<f64> = Vec::new();
-    for r in startr..endr {
-        for c in startc..endc {
+    for c in startc..endc {
+        for r in startr..endr {
             vec.push(src.get(r,c)?.clone());
         }
     }
@@ -565,6 +565,9 @@ mod tests {
 
     fn assert_sub_full(b: &Matrix) {
         assert_eq!(b.dims(), (2, 5));
+        assert_fpvec_eq!(b,
+            mat![1.0, 2.0, 3.0, 4.0, 5.0;
+                 10.0, 20.0, 30.0, 40.0, 50.0]);
     }
     fn assert_subview_full(b: &Matrix) {
         assert!(!b.is_subview());
@@ -583,8 +586,8 @@ mod tests {
 
     #[test]
     fn test_clone_subm() {
-        let (m, n) = (2,5);
-        let a = Matrix::from_vec(vec![1.0, 10.0, 2.0, 20.0, 3.0, 30.0, 4.0, 40.0, 5.0, 50.0], m, n);
+        let a = mat![1.0, 2.0, 3.0, 4.0, 5.0;
+                     10.0, 20.0, 30.0, 40.0, 50.0];
 
         assert_sub_first_row(&a.clone_subm(0, ..).unwrap());
         assert_sub_first_row(&a.clone_subm(0..1, ..).unwrap());
@@ -608,6 +611,8 @@ mod tests {
         assert_sub_second_col(&a.clone_subm(..2, 1).unwrap());
         assert_sub_second_col(&a.clone_subm(0.., 1).unwrap());
         assert_sub_second_col(&a.clone_subm(0..2, 1..2).unwrap());
+
+        assert_fpvec_eq!(&a.clone_subm(.., 1..3).unwrap(), mat![2.0, 3.0; 20.0, 30.0]);
     }
 
     #[test]
