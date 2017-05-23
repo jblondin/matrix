@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub, Neg};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Neg};
 
 use blas;
 use blas::c::Layout;
@@ -42,6 +42,37 @@ implement_add!(Matrix, &'a Matrix, 'a);
 implement_add!(&'a Matrix, Matrix, 'a);
 implement_add!(&'a Matrix, &'b Matrix, 'a, 'b);
 
+macro_rules! bin_assign_inner {
+    ($rhs:ty, $name:ident, $op:tt) => {
+        fn $name(&mut self, rhs: $rhs) {
+            assert_eq!(self.dims(), rhs.dims());
+            for i in 0..self.nrows() {
+                for j in 0..self.ncols() {
+                    let value = self.get(i, j).unwrap() $op rhs.get(i, j).unwrap();
+                    self.set(i, j, value).unwrap();
+                }
+            }
+        }
+    }
+}
+macro_rules! add_assign_inner {
+    ($rhs:ty) => { bin_assign_inner!($rhs, add_assign, +); }
+}
+macro_rules! implement_add_assign {
+    ($rhs:ty) => {
+        impl AddAssign<$rhs> for Matrix {
+            add_assign_inner!($rhs);
+        }
+    };
+    ($rhs:ty, $( $lifetime:tt ),* ) => {
+        impl<$($lifetime),*> AddAssign<$rhs> for Matrix {
+            add_assign_inner!($rhs);
+        }
+    };
+}
+implement_add_assign!(Matrix);
+implement_add_assign!(&'a Matrix, 'a);
+
 macro_rules! sub_inner {
     ($rhs:ty) => { bin_inner!($rhs, sub, -); }
 }
@@ -63,6 +94,24 @@ implement_sub!(Matrix, &'a Matrix, 'a);
 implement_sub!(&'a Matrix, Matrix, 'a);
 implement_sub!(&'a Matrix, &'b Matrix, 'a, 'b);
 
+macro_rules! sub_assign_inner {
+    ($rhs:ty) => { bin_assign_inner!($rhs, sub_assign, -); }
+}
+macro_rules! implement_sub_assign {
+    ($rhs:ty) => {
+        impl SubAssign<$rhs> for Matrix {
+            sub_assign_inner!($rhs);
+        }
+    };
+    ($rhs:ty, $( $lifetime:tt ),* ) => {
+        impl<$($lifetime),*> SubAssign<$rhs> for Matrix {
+            sub_assign_inner!($rhs);
+        }
+    };
+}
+implement_sub_assign!(Matrix);
+implement_sub_assign!(&'a Matrix, 'a);
+
 // negation
 impl Neg for Matrix {
     type Output = Matrix;
@@ -78,8 +127,6 @@ impl<'b> Neg for &'b Matrix {
         Matrix::from_vec(self.iter().map(|e| -e).collect(), self.nrows(), self.ncols())
     }
 }
-
-
 
 // multiplication
 pub fn gemv(a: &Matrix, b: &Matrix, alpha: f64, c_beta: Option<(&Matrix, f64)>)
@@ -143,6 +190,17 @@ implement_mul!(Matrix, &'a Matrix, 'a);
 implement_mul!(&'a Matrix, Matrix, 'a);
 implement_mul!(&'a Matrix, &'b Matrix, 'a, 'b);
 
+impl MulAssign<Matrix> for Matrix {
+    fn mul_assign(&mut self, rhs: Matrix) {
+        *self = gemv(&self, &rhs, 1.0, None);
+    }
+}
+impl<'a> MulAssign<&'a Matrix> for Matrix {
+    fn mul_assign(&mut self, rhs: &'a Matrix) {
+        *self = gemv(&self, rhs, 1.0, None);
+    }
+}
+
 fn scalar_mul(mat: &Matrix, rhs: f64) -> Matrix {
     let mut out = mat.clone();
     for i in 0..mat.nrows() {
@@ -180,6 +238,22 @@ impl<'a> Mul<&'a Matrix> for f64 {
 
     fn mul(self, rhs: &'a Matrix) -> Matrix {
         scalar_mul(rhs, self)
+    }
+}
+
+impl Matrix {
+    pub fn scalar_mul(&mut self, rhs: f64) {
+        for i in 0..self.nrows() {
+            for j in 0..self.ncols() {
+                let prev_value = self.get(i, j).unwrap();
+                self.set(i, j, rhs * prev_value).unwrap();
+            }
+        }
+    }
+}
+impl MulAssign<f64> for Matrix {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.scalar_mul(rhs);
     }
 }
 
@@ -284,6 +358,38 @@ mod tests {
     }
 
     #[test]
+    fn test_matrix_mul_assign_move() {
+        let (m, n, k) = (2, 4, 3);
+        let mut a = Matrix::from_vec(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], m, k);
+        let b = Matrix::from_vec(
+            vec![1.0, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0], k, n);
+
+        a *= b;
+
+        assert_eq!(a.nrows(), m);
+        assert_eq!(a.ncols(), n);
+        let a_data = a.data();
+        assert_eq!(*a_data.values(),
+                vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
+    }
+
+    #[test]
+    fn test_matrix_mul_assign_ref() {
+        let (m, n, k) = (2, 4, 3);
+        let mut a = Matrix::from_vec(vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0], m, k);
+        let b = Matrix::from_vec(
+            vec![1.0, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0], k, n);
+
+        a *= &b;
+
+        assert_eq!(a.nrows(), m);
+        assert_eq!(a.ncols(), n);
+        let a_data = a.data();
+        assert_eq!(*a_data.values(),
+                vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0]);
+    }
+
+    #[test]
     fn test_matrix_scalar_mul_move() {
         let (m, n) = (2, 4);
         let a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
@@ -338,6 +444,21 @@ mod tests {
         assert_eq!(*out_data.values(),
             vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
     }
+
+    #[test]
+    fn test_matrix_scalar_mul_assign() {
+        let (m, n) = (2, 4);
+        let mut a = Matrix::from_vec(vec![1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0], m, n);
+
+        a *= 2.0;
+
+        assert_eq!(a.nrows(), m);
+        assert_eq!(a.ncols(), n);
+        let a_data = a.data();
+        assert_eq!(*a_data.values(),
+            vec![2.0, 10.0, 4.0, 12.0, 6.0, 14.0, 8.0, 16.0]);
+    }
+
     #[test]
     fn test_matrix_add_move_ref() {
         let (m, n) = (2, 4);
@@ -391,6 +512,32 @@ mod tests {
     }
 
     #[test]
+    fn test_matrix_add_assign_move() {
+        let (m, n) = (2, 4);
+        let mut a = Matrix::from_vec(vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0], m, n);
+        let b = Matrix::from_vec(vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0], m, n);
+
+        a += b;
+
+        let a_data = a.data();
+        assert_eq!(*a_data.values(),
+            vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
+    }
+
+    #[test]
+    fn test_matrix_add_assign_ref() {
+        let (m, n) = (2, 4);
+        let mut a = Matrix::from_vec(vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0], m, n);
+        let b = Matrix::from_vec(vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0], m, n);
+
+        a += &b;
+
+        let a_data = a.data();
+        assert_eq!(*a_data.values(),
+            vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0]);
+    }
+
+    #[test]
     fn test_matrix_sub_move_ref() {
         let (m, n) = (2, 4);
         let a = Matrix::from_vec(vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0], m, n);
@@ -436,6 +583,30 @@ mod tests {
 
         let out_data = out.data();
         assert_eq!(*out_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+    }
+
+    #[test]
+    fn test_matrix_sub_assign_move() {
+        let (m, n) = (2, 4);
+        let mut a = Matrix::from_vec(vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0], m, n);
+        let b = Matrix::from_vec(vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0], m, n);
+
+        a -= b;
+
+        let a_data = a.data();
+        assert_eq!(*a_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
+    }
+
+    #[test]
+    fn test_matrix_sub_assign_ref() {
+        let (m, n) = (2, 4);
+        let mut a = Matrix::from_vec(vec![40.0, 90.0, 50.0, 100.0, 50.0, 120.0, 60.0, 130.0], m, n);
+        let b = Matrix::from_vec(vec![38.0, 83.0, 44.0, 98.0, 50.0, 113.0, 56.0, 128.0], m, n);
+
+        a -= &b;
+
+        let a_data = a.data();
+        assert_eq!(*a_data.values(), vec![2.0, 7.0, 6.0, 2.0, 0.0, 7.0, 4.0, 2.0]);
     }
 
     #[test]
