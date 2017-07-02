@@ -19,7 +19,7 @@ Features:
 * Inverse matrices
 * Vector Norms: L<sub>1</sub>, L<sub>2</sub>, Inf, L<sub>p</sub>
 * Matrix Norms:
-* Induced: L<sub>1</sub>, L<sub>2</sub> / Spectral, Inf
+  * Induced: L<sub>1</sub>, L<sub>2</sub> / Spectral, Inf
   * Entry-wise (for any vector norm)
   * L<sub>p, q</sub>
   * Frobenius (same as entry-wise L<sub>2</sub>)
