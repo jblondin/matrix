@@ -12,7 +12,7 @@ repository = "https://github.com/jblondin/matrix"
 [dependencies]
 blas = { version = "0.15" }
 lapack = { version = "0.11" }
-num = "*"
-error-chain = "*"
-rand = "*"
+num = "0.1"
+error-chain = "0.11"
+rand = "0.3"
 unittest = "0.1.0"
