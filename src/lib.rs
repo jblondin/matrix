@@ -1,3 +1,9 @@
+//! Provides a matrix implementation, wrapping calls to BLAS and LAPACK.
+//!
+//! Supports matrix views, submatrices, arithmetic operations, decompositions (including singular
+//! value and eigenvalue decompositions), linear system equation solvers, and norms.
+
+#![warn(missing_docs)]
 
 extern crate blas;
 extern crate lapack;

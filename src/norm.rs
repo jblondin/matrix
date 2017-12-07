@@ -11,16 +11,28 @@ use solve::Solve;
 
 use errors::*;
 
+/// Valid vector norm types
 #[derive(Debug, Clone, Copy)]
 pub enum Norm {
+    /// L1 (absolute value) norm
     L1,
+    /// L2 (Euclidean) norm
     L2,
+    /// L2 norm, squared (to avoid potentially expensive square root operations)
     L2Sqrd,
+    /// Ininity (maximum) norm
     Inf,
+    /// Negative infinity (minimum) norm
     NegInf,
+    /// General p-norm with specified coefficient
     P(f64),
 }
+/// Trait providing vector norms
 pub trait VectorNorm {
+    /// Compute the specified norm type on the vector.
+    ///
+    /// #Panics
+    /// Panics if implementing type is not actually a vector.
     fn norm(&self, norm_type: Norm) -> f64;
 }
 
@@ -31,28 +43,42 @@ impl VectorNorm for Matrix {
     }
 }
 
+/// Valid matrix norm types
 #[derive(Debug, Clone, Copy)]
 pub enum MatNorm {
-    // induced norms
+    //induced norms
+    /// L1-Induced matrix norm
     InducedL1,
+    /// L2-Induced matrix norm
     InducedL2,
+    /// Infinity-induced matrix norm
     InducedInf,
-    Spectral, // intical to InducedL2
+    /// Spectral norm (identical to InducedL2 norm)
+    Spectral,
 
     //entrywise
+    /// General entrywise matrix norm, using specified vector norm
     Entrywise(Norm),
+    /// L_{2,1} norm (sum of Euclidean norms of the columns of the matrix)
+    L21,
+    /// L_{p, q} norm
+    Lpq(f64, f64),
 
-    L21, // L_{2,1}
-    Lpq(f64, f64), // L_{p, q}
-
-    Frobenius, // identical to Entrywise(L2) or Lpq(2,2)
-    Max, // identical to Entrywise(Inf)
+    /// Frobenius norm (identical to Entrywise(L2) or Lpq(2,2))
+    Frobenius,
+    /// Max norm (identifier to Entrywise(Inf))
+    Max,
 
     // schatten norms
+    /// General Schatten norm with specified vector norm
     Schatten(Norm),
-    Nuclear, // identical to Schatten(L1)
+    /// Nuclear norm (identical to Schatten(L1)
+    Nuclear,
+
 }
+/// Provides method for computing matrix norms.
 pub trait MatrixNorm {
+    /// Compute the specified matrix norm type
     fn matrix_norm(&self, norm_type: MatNorm) -> f64;
 }
 
@@ -162,21 +188,21 @@ impl Matrix {
             Ok(rcond)
         }
     }
-    // computes the reciprocal of the L1-norm condition number of the matrix
+    /// Computes the reciprocal of the L1-norm condition number of the matrix
     pub fn rcond(&self) -> Result<f64> {
         self.rcond_inner(MatNorm::InducedL1)
     }
-    // computer the recpirocal of the Inf-norm condition number of the matrix
+    /// Computes the recpirocal of the Inf-norm condition number of the matrix
     pub fn rcond_inf(&self) -> Result<f64> {
         self.rcond_inner(MatNorm::InducedInf)
     }
 
-    // computes the L2-norm condition number
+    /// Computes the L2-norm condition number of this matrix
     pub fn cond(&self) -> Result<f64> {
         self.cond_nt(MatNorm::InducedL2)
     }
 
-    // computes the condition number using the specified matrix norm
+    /// Computes the condition number using the specified matrix norm
     pub fn cond_nt(&self, norm_type: MatNorm) -> Result<f64> {
         match norm_type {
             MatNorm::InducedL2 | MatNorm::Spectral => {

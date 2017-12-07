@@ -1,3 +1,5 @@
+//! Matrix decomposition traits and implementations.
+
 use lapack;
 use lapack::c::Layout;
 
@@ -8,23 +10,31 @@ use Matrix;
 #[inline]
 fn min(x: usize, y: usize) -> usize { if x < y { x } else { y } }
 
+/// Trait for re-composing a matrix from a decomposition.
 pub trait Compose<T> {
+    /// Generate a matrix from this decomposition.
     fn compose(&self) -> T;
 }
 
+// Convert a vector of indices from lapack indexing (1-based) to C indexing (0-based)
 pub fn lapack_to_c_indexing(v: &Vec<i32>) -> Vec<usize> {
     v.iter().map(|&i| i as usize - 1).collect()
 }
+// Convert a vector of indices from C indexing (0-based) to lapack indexing (1-based)
 pub fn c_to_lapack_indexing(v: &Vec<usize>) -> Vec<i32> {
     v.iter().map(|&u| u as i32 + 1).collect()
 }
 
+/// LU (lower-upper) decomposition structure using value storage type `T` and permutation storage
+/// type `P`.
 #[derive(Debug, Clone)]
 pub struct LU<T, P> {
     lu: T,
     ipiv: P,
 }
 impl LU<Matrix, Vec<usize>> {
+    /// Return the lower-triangular postion of the decomposition. This is a heavy operation: it will
+    /// generate an entirely new lower-triangular matrix from the decomposition data.
     pub fn l(&self) -> Matrix {
         let (m, n) = self.lu.dims();
 
@@ -40,6 +50,8 @@ impl LU<Matrix, Vec<usize>> {
         }
         l
     }
+    /// Return the upper-triangular postion of the decomposition. This is a heavy operation: it will
+    /// generate an entirely new upper-triangular matrix from the decomposition data.
     pub fn u(&self) -> Matrix {
         let (m, n) = self.lu.dims();
 
@@ -52,6 +64,8 @@ impl LU<Matrix, Vec<usize>> {
         }
         u
     }
+    /// Return the permutation matrix for the decomposition. This is a heavy operation: it will
+    /// generate an entirely new matrix from the decomposition and permutation data.
     pub fn p(&self) -> Matrix {
         let m = self.lu.nrows();
 
@@ -73,9 +87,13 @@ impl LU<Matrix, Vec<usize>> {
         }
         pmat
     }
+    /// Retrieve a reference to the LU storage matrix itself
     pub fn lu_data(&self) -> &Matrix { &self.lu }
+    /// Retrieve a reference to the permutation data (internally stored as a vector)
     pub fn ipiv_data(&self) -> &Vec<usize> { &self.ipiv }
+    /// Retrieve a mutable reference to the LU storage matrix itself
     pub fn lu_data_mut(&mut self) -> &mut Matrix { &mut self.lu }
+    /// Retrieve a mutable reference to the permutation data (internally stored as a vector)
     pub fn ipiv_data_mut(&mut self) -> &mut Vec<usize> { &mut self.ipiv }
 }
 impl Compose<Matrix> for LU<Matrix, Vec<usize>> {
@@ -96,9 +114,12 @@ impl Compose<Matrix> for LU<Matrix, Vec<usize>> {
     }
 }
 
+/// Trait providing LU decomposition.
 pub trait LUDecompose: Sized {
+    /// How this decomposition will store permutations
     type PermutationStore;
 
+    /// Decompose into an LU decomposition structure
     fn lu(&self) -> Result<LU<Self, Self::PermutationStore>>;
 }
 
@@ -129,13 +150,17 @@ impl LUDecompose for Matrix {
     }
 }
 
+
+/// QR decomposition structure using value storage type `T` and scalar factors storage type `S`
 #[derive(Debug, Clone)]
 pub struct QR<T, S> {
     qr: T,
     tau: S,
 }
 impl QR<Matrix, Vec<f64>> {
-    fn q(&self) -> Matrix {
+    /// Return the `Q` orthogonal matrix for the decomposition. This is a heavy operation: it will
+    /// generate an entirely new matrix from the decomposition data.
+    pub fn q(&self) -> Matrix {
         let (m,n) = self.qr.dims();
         let mut q = Matrix::eye(m);
         for k in 0..min(m, n) {
@@ -150,7 +175,9 @@ impl QR<Matrix, Vec<f64>> {
         q
     }
 
-    fn r(&self) -> Matrix {
+    /// Return the `R` upper triangular matrix for the decomposition. This is a heavy operation: it
+    /// will generate an entirely new matrix from the decomposition data.
+    pub fn r(&self) -> Matrix {
         let (m, n) = self.qr.dims();
         let mut r = Matrix::zeros(m, n);
         for i in 0..min(m, n) {
@@ -167,9 +194,13 @@ impl Compose<Matrix> for QR<Matrix, Vec<f64>> {
     }
 }
 
+/// Trait providing QR decomposition
 pub trait QRDecompose: Sized {
+    /// How the decomposition will store the scalar factors for the elementary reflectors (a.k.a.
+    /// Householder reflections). See LAPACK's dgeqrfp for more details.
     type TauStore;
 
+    /// Decompose into a a QR decomposition structure
     fn qr(&self) -> Result<QR<Self, Self::TauStore>>;
 }
 
@@ -200,11 +231,14 @@ impl QRDecompose for Matrix {
     }
 }
 
+/// Cholesky decomposition structure using value storage type `T`.
 #[derive(Debug, Clone)]
 pub struct Cholesky<T> {
     a: T,
 }
 impl Cholesky<Matrix> {
+    /// Return the `L` lower triangular matrix for the decomposition (such that A=LL*). This is a
+    /// heavy operation: it will generate an entirely new matrix from the decomposition data.
     pub fn l(&self) -> Matrix {
         let m = self.a.nrows();
         let mut l = Matrix::zeros(m, m);
@@ -225,8 +259,10 @@ impl Compose<Matrix> for Cholesky<Matrix> {
     }
 }
 
+/// Trait providing Cholesky decomposition
 pub trait CholeskyDecompose: Sized {
-    fn chol(&self) -> Result<Cholesky<Matrix>>;
+    /// Decompose into a cholesky decomposition structure.
+    fn chol(&self) -> Result<Cholesky<Self>>;
 }
 impl CholeskyDecompose for Matrix {
     fn chol(&self) -> Result<Cholesky<Matrix>> {
@@ -259,6 +295,7 @@ impl CholeskyDecompose for Matrix {
     }
 }
 
+/// Eigenvalue decomposition structure for type `T`, with eigenvalue storage structure `U`.
 #[derive(Debug, Clone)]
 pub struct Eigen<T, U> {
     eigs: (U, U), // real and imaginary parts
@@ -266,21 +303,27 @@ pub struct Eigen<T, U> {
     vr: Option<T>,
 }
 impl Eigen<Matrix, Vec<f64>> {
+    /// Retrieve references to the eigenvalue lists (real and imaginary)
     pub fn eigenvalues(&self) -> (&Vec<f64>, &Vec<f64>) {
         (self.eigenvalues_real(), self.eigenvalues_imag())
     }
+    /// Returns true if this eigvenvalue decomposition contains any imaginary eigenvalues
     pub fn has_complex_eigenvalues(&self) -> bool {
         self.eigenvalues_imag().iter().fold(0.0, |acc, &f| if acc != f { 1.0 } else { 0.0 }) != 0.0
     }
+    /// Retrieve a reference to the real-valued eigenvalue list
     pub fn eigenvalues_real(&self) -> &Vec<f64> {
         &self.eigs.0
     }
+    /// Retrieve a reference to the imaginary-valued eigenvalue list
     pub fn eigenvalues_imag(&self) -> &Vec<f64> {
         &self.eigs.1
     }
+    /// Retrieve a reference to the left eigenvector matrix (if produced)
     pub fn eigenvectors_left(&self) -> Option<&Matrix> {
         self.vl.as_ref()
     }
+    /// Retrieve a reference to the right eigenvector matrix (if produced)
     pub fn eigenvectors_right(&self) -> Option<&Matrix> {
         self.vr.as_ref()
     }
@@ -295,16 +338,23 @@ impl Compose<Matrix> for Eigen<Matrix, Vec<f64>> {
     }
 }
 
+/// Options for performing an eigenvalue decomposition: which eigenvectors to generate.
 #[derive(Debug, Clone, Copy)]
 pub enum EigenOptions {
+    /// Generate both right and left eigenvectors
     BothEigenvectors,
+    /// Generate only left eigenvectors
     LeftEigenvectorsOnly,
+    /// Generate only right eigenvectors
     RightEigenvectorsOnly,
+    /// Only generate eigenvalues (no eigenvectors)
     EigenvaluesOnly
 }
+/// Trait providing eigenvalue decomposition
 pub trait EigenDecompose: Sized {
+    /// Storage type for eigenvalues
     type EigenvalueStore;
-
+    /// Perform eigendecomposition into eigenvalue / eigenvector decomposition structure.
     fn eigen(&self, opts: EigenOptions) -> Result<Eigen<Self, Self::EigenvalueStore>>;
 }
 impl EigenDecompose for Matrix {
@@ -364,6 +414,7 @@ impl EigenDecompose for Matrix {
     }
 }
 
+/// Singular value decomposition storage structure for storage type `T` and sigma storage type `U`.
 #[derive(Debug, Clone)]
 pub struct SVD<T, U> {
     u: T,
@@ -371,12 +422,16 @@ pub struct SVD<T, U> {
     v: T,
 }
 impl SVD<Matrix, Vec<f64>> {
+    /// Retrieve a reference to the U matrix (where M=UΣV*)
     pub fn u(&self) -> &Matrix {
         &self.u
     }
+    /// Retrieve a reference to the vector that composes the diagonal of the Σ matrix (where M=UΣV*)
     pub fn sigmavec(&self) -> &Vec<f64> {
         &self.sigma
     }
+    /// Retrieve the Σ matrix. This a heavy operation: it generated a new matrix with the Σ values
+    /// along the diagonal.
     pub fn sigmamat(&self) -> Matrix {
         let (m, n) = (self.u.ncols(), self.v.nrows());
         let mut sigma = Matrix::zeros(m, n);
@@ -389,6 +444,7 @@ impl SVD<Matrix, Vec<f64>> {
         }
         sigma
     }
+    /// Retrieve a reference to the V matrix (where M=SΣV*)
     pub fn v(&self) -> &Matrix {
         &self.v
     }
@@ -399,9 +455,12 @@ impl Compose<Matrix> for SVD<Matrix, Vec<f64>> {
     }
 }
 
+/// Trait that provides singular value decomposition
 pub trait SingularValueDecompose: Sized {
+    /// Storage type for singular values
     type SingularValueStore;
 
+    /// Perform singular value decomposition into SVD structure.
     fn svd(&self) -> Result<SVD<Self, Self::SingularValueStore>>;
 }
 

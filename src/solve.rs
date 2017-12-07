@@ -1,3 +1,4 @@
+//! Solvers for systems of linear equations
 use lapack;
 use lapack::c::Layout;
 
@@ -18,14 +19,36 @@ pub struct ApproxSoln<T> {
     pub resid: Option<Vec<f64>>,
 }
 
+/// Trait to provide various solver implementations for systems of equations AX=B.
 pub trait Solve {
+    /// The right-hand side type (the type of B in the equation AX=B)
     type Rhs;
+    /// The output (solution) type (the type of X in the equation AX=B)
     type Output;
 
+    /// Solve the equation AX=B for X. Solution can either be exact (if possible) or approximate.
+    /// Shortcut for calling solve_exact or solve_approx.
     fn solve(&self, b: &Self::Rhs) -> Result<Self::Output>;
+    /// Solve the equation AX=B for the exact solution X
+    ///
+    /// # Failures
+    /// Fails if no exact solution is possible for AX=B or the equation is improperly defined.
     fn solve_exact(&self, b: &Self::Rhs) -> Result<Self::Output>;
+    /// Solve the equation AX=B for the exact solution X. Assumes A is a symmetric matrix. Only the
+    /// upper-triangular portion of A is considered; no failure occurs if A is not symmetric.
+    ///
+    /// # Failures
+    /// Fails if no exact solution is possible for AX=B orthe equation is improperly defined.
     fn solve_symm(&self, b: &Self::Rhs) -> Result<Self::Output>;
+    /// Solve the equation AX=B for the approximate solution X.
+    ///
+    /// # Failures
+    /// Fails if no approximate solution is possible for AX=B or the equation is improperly defined.
     fn solve_approx(&self, b: &Self::Rhs) -> Result<ApproxSoln<Self::Output>>;
+    /// Compute the inverse of A.
+    ///
+    /// # Failures
+    /// Fails if the matrix is not invertible.
     fn inverse(&self) -> Result<Self::Output>;
 }
 
@@ -184,10 +207,17 @@ impl Solve for Matrix {
     }
 }
 
+/// Trait providing a solver for the equation A'AX=B
 pub trait GramSolve {
+    /// The right-hand side type (the type of B in the equation A'AX=B)
     type Rhs;
+    /// The output (solution) type (the type of X in the equation A'AX=B)
     type Output;
 
+    /// Solve the equation A'AX=B for the exact solution X
+    ///
+    /// # Failures
+    /// Fails if no exact solution is possible for AX=B or the equation is improperly defined.
     fn gram_solve(&self, b: &Self::Rhs) -> Result<Self::Output>;
 }
 

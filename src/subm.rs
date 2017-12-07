@@ -1,3 +1,5 @@
+//! Provides traits and implementations for creating new submatrices and submatrix views.
+
 use std::f64;
 use std::ops::{Range, RangeTo, RangeFrom, RangeFull};
 
@@ -6,14 +8,23 @@ use errors::*;
 use Matrix;
 use MatrixRange;
 
+/// Trait providing a method for cloning a submatrix of an existing matrix into an entirely new
+/// matrix of type `Self::Output`, given ranges of type `R` and `S`. Copies data from the original
+/// matrix, creating a new underlying matrix data store.
 pub trait CloneSub<R, S> {
+    /// The submatrix output type
     type Output;
 
+    /// Clone a new submatrix from this matrix, using specified row and column ranges.
     fn clone_subm(&self, rngr: R, rngc: S) -> Result<Self::Output>;
 }
+/// Trait providing a method for creating a new submatrix view of type `Self::Output` into an
+/// existing matrix, given ranges of type `R` and `S`. Does not copy data; provides a new view.
 pub trait SubMatrix<R, S> {
+    /// The submatrix output type
     type Output;
 
+    /// Create a new submatrix view from this matrix, using specified row and column ranges.
     fn subm(&self, rngr: R, rngc: S) -> Result<Self::Output>;
 }
 

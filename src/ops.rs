@@ -1,3 +1,6 @@
+//! Implements addition, subtraction, multiplication, negation, and assignable variations of
+//! addition, subtraction, and multiplication
+
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Neg};
 
 use blas;
@@ -242,6 +245,7 @@ impl<'a> Mul<&'a Matrix> for f64 {
 }
 
 impl Matrix {
+    /// Multiply a matrix by specified scalar, in-place.
     pub fn scalar_mul(&mut self, rhs: f64) {
         for i in 0..self.nrows() {
             for j in 0..self.ncols() {

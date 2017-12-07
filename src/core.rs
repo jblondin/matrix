@@ -1,3 +1,5 @@
+//! Core matrix structures and implementations.
+
 use std::f64;
 use std::cell::{Ref, RefMut, RefCell};
 use std::rc::Rc;
@@ -10,12 +12,16 @@ use rand::distributions::normal::StandardNormal;
 
 use errors::*;
 
+/// Transpose flag; whether or not to treat the matrix as transposed
 #[derive(Debug, Clone, Copy)]
 pub enum Transpose {
+    /// Yes, transpose
     Yes,
+    /// No transposition
     No,
 }
 impl Transpose {
+    /// Convert flag to BLAS transposition flag
     #[inline]
     pub fn convert_to_blas(&self) -> ::blas::c::Transpose {
         match *self {
@@ -23,6 +29,7 @@ impl Transpose {
             Transpose::No   => ::blas::c::Transpose::None,
         }
     }
+    /// Switch the transposition flag
     #[inline]
     pub fn t(&self) -> Transpose {
         match *self {
@@ -32,6 +39,7 @@ impl Transpose {
     }
 }
 
+/// Matrix storage structure. Data is stored in a single vector, in column-major format.
 #[derive(Debug, Clone)]
 pub struct MatrixData {
     values: RefCell<Vec<f64>>,
@@ -39,17 +47,21 @@ pub struct MatrixData {
     cols: usize,
 }
 impl MatrixData {
+    /// borrow the underlying matrix data
     pub fn values(&self) -> Ref<Vec<f64>> {
         self.values.borrow()
     }
+    /// mutably borrow the underlying matrix data
     pub fn values_mut(&self) -> RefMut<Vec<f64>> {
         self.values.borrow_mut()
     }
 }
 
+/// Submatrix range specification; a range from (r_start, c_start) to (r_end, c_end)
 #[derive(Debug, Clone)]
 pub struct MatrixRange(pub Range<(usize, usize)>);
 impl MatrixRange {
+    /// Generate a range consisting of the entire underlying matrix
     pub fn full(nrows: usize, ncols: usize) -> MatrixRange {
         MatrixRange((0, 0)..(nrows, ncols))
     }
@@ -67,20 +79,29 @@ impl MatrixRange {
     }
 }
 
+/// View into matrix data. A single MatrixData structure can back multiple Matrix views, with
+/// different range specifications (to denote submatrices) or transpositions.
 #[derive(Debug)]
 pub struct Matrix {
+    /// Reference to the underlying matrix storage structure.
     pub data: Rc<MatrixData>,
+    /// The range of values from the underlying matrix storage this matrix shows
     pub view: MatrixRange,
+    /// Whether or not to transpose the data in the underlying matrix storage
     pub transposed: Transpose,
 }
 
-// for to_symmetric
+/// Flag to specify how to symmetrize a matrix (used in to_symmetic method)
 pub enum SymmetrizeMethod {
+    /// Symmetrize a matrix by copying the lower triangular portion
     CopyLower,
+    /// Symmetrize a matrix by copying the upper triangular portion
     CopyUpper,
 }
 
 impl Matrix {
+    /// Create a matrix (with new underlying matrix storage) from data vector (in column-major
+    /// order) with the specificied dimensions
     pub fn from_vec(data: Vec<f64>, nrows: usize, ncols:usize) -> Matrix {
         assert_eq!(data.len(), nrows * ncols);
         Matrix {
@@ -93,6 +114,8 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Create a matrix (with new underlying matrix storage) consisting entirely of the value 1.0,
+    /// with specified dimensions
     pub fn ones(nrows: usize, ncols: usize) -> Matrix {
         Matrix {
             data: Rc::new(MatrixData {
@@ -104,6 +127,8 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Create a matrix (with new underlying matrix storage) consisting entirely of the value 0.0,
+    /// with specified dimensions
     pub fn zeros(nrows: usize, ncols: usize) -> Matrix {
         Matrix {
             data: Rc::new(MatrixData {
@@ -115,6 +140,8 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Create a matrix (with new underlying matrix storage) with the provided data vector as its
+    /// diagonal (and zeroes elsewhere)
     pub fn diag(vec: &Vec<f64>) -> Matrix {
         let n = vec.len();
         let mut m = Matrix {
@@ -132,9 +159,12 @@ impl Matrix {
         }
         m
     }
+    /// Create an identity matrix (with new underlying matrix storage) of given size
     pub fn eye(n: usize) -> Matrix {
         Matrix::diag(&vec![1.0; n])
     }
+    /// Create a random matrix (with new underlying matrix storage) of given dimensions, with values
+    /// between 0.0 and 1.0.
     pub fn rand(nrows: usize, ncols: usize) -> Matrix {
         let mut rng = rand::thread_rng();
 
@@ -152,6 +182,8 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Create a random matrix (with new underlying matrix storage) of given dimensions, with values
+    /// drawn from a standard normal distribution (mean 0.0, standard deviation 1.0)
     pub fn randsn(nrows: usize, ncols: usize) -> Matrix {
         let mut rng = rand::thread_rng();
 
@@ -169,6 +201,8 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Create a random matrix (with new underlying matrix storage) of given dimensions, with values
+    /// drawn from a normal distribution with specified mean and standard deviation
     pub fn randn(nrows: usize, ncols: usize, mean: f64, stdev: f64) -> Matrix {
         let mut rng = rand::thread_rng();
         let dist = Normal::new(mean, stdev);
@@ -189,38 +223,51 @@ impl Matrix {
 
     }
 
+    /// Retrieve the number of rows of this matrix
     pub fn nrows(&self) -> usize {
         match self.transposed {
             Transpose::Yes  => { self.view.ncols() }
             Transpose::No   => { self.view.nrows() }
         }
     }
+    /// Retrieve the number of columns of this matrix
     pub fn ncols(&self) -> usize {
         match self.transposed {
             Transpose::Yes  => { self.view.nrows() }
             Transpose::No   => { self.view.ncols() }
         }
     }
+    /// Retrieve the dimensions of this matrix
     pub fn dims(&self) -> (usize, usize) {
         match self.transposed {
             Transpose::Yes  => { (self.view.ncols(), self.view.nrows()) }
             Transpose::No   => { (self.view.nrows(), self.view.ncols()) }
         }
     }
+    /// Retrieve the minimum dimension (either number of rows or number of columns, whichever is
+    /// smaller) of this matrix
     pub fn mindim(&self) -> usize {
         let (m, n) = self.dims();
         if m < n { m } else { n }
     }
+    /// Retrieve the maximum dimension (either number of rows or number of columns, whichever is
+    /// larger) of this matrix
     pub fn maxdim(&self) -> usize {
         let (m, n) = self.dims();
         if m > n { m } else { n }
     }
+    /// Retrieve the number of values in this matrix
     pub fn length(&self) -> usize { self.view.ncols() * self.view.nrows() }
+    /// Whether or not this matrix is square
     pub fn is_square(&self) -> bool { self.nrows() == self.ncols() }
+    /// Whether or not this matrix is a vector (either row or column)
     pub fn is_vector(&self) -> bool { self.nrows() == 1 || self.ncols() == 1 }
+    /// Whether or not this matrix is a row vector (only consists of one row)
     pub fn is_row_vector(&self) -> bool { self.nrows() == 1 }
+    /// Whether or not this matrix is a column vector (only consists of one column)
     pub fn is_col_vector(&self) -> bool { self.ncols() == 1 }
 
+    /// Generate a new, transposed, matrix view into the underlying matrix data
     pub fn transpose(&self) -> Matrix {
         Matrix {
             data: self.data.clone(),
@@ -228,9 +275,11 @@ impl Matrix {
             transposed: self.transposed.t()
         }
     }
+    /// Short-cut for transpose() method
     #[inline]
     pub fn t(&self) -> Matrix { self.transpose() }
 
+    /// Generate an iterator over the matrix values
     pub fn iter(&self) -> MatrixIter {
         MatrixIter {
             mat: &self,
@@ -238,10 +287,18 @@ impl Matrix {
         }
     }
 
+    /// Retrieve a specific value from the matrix
+    ///
+    /// # Failures
+    /// Returns `Err` if specified row, column is out of bounds
     pub fn get(&self, r: usize, c: usize) -> Result<f64> {
         self.data.values.borrow().get(self.index(r, c)).map(|&f| f)
             .ok_or(Error::from_kind(ErrorKind::IndexError("index out of bounds")))
     }
+    /// Sets a specific value in the matrix
+    ///
+    /// # Failures
+    /// Returns `Err` if specified row, column is out of bounds
     pub fn set(&mut self, r: usize, c: usize, value: f64) -> Result<()> {
         let mut v = self.data.values.borrow_mut();
         let i = self.index(r, c);
@@ -252,6 +309,13 @@ impl Matrix {
         Ok(())
     }
 
+    /// Generate a new matrix (with new underlying matrix data, copied from the given matrices)
+    /// which is composed of a horizontal concatenation of the two given matrices. The new matrix
+    /// will have the same number of rows, and a number of columns equal to the sum of the number of
+    /// columns of the given matrices.
+    ///
+    /// # Panics
+    /// Panics if the two given matrices do not have the same number of rows.
     pub fn hcat(&self, other: &Matrix) -> Matrix {
         assert_eq!(self.nrows(), other.nrows());
 
@@ -272,6 +336,13 @@ impl Matrix {
             transposed: Transpose::No,
         }
     }
+    /// Generate a new matrix (with new underlying matrix data, copied from the given matrices)
+    /// which is composed of a vertical concatenation of the two given matrices. The new matrix
+    /// will have the same number of columns, and a number of rows equal to the sum of the number of
+    /// rows of the given matrices.
+    ///
+    /// # Panics
+    /// Panics if the two given matrices do not have the same number of columns.
     pub fn vcat(&self, other: &Matrix) -> Matrix {
         assert_eq!(self.ncols(), other.ncols());
 
@@ -299,9 +370,12 @@ impl Matrix {
         }
     }
 
+    /// Returns whether or not this matrix view is a subview (does not show all of the underlying
+    /// data)
     pub fn is_subview(&self) -> bool {
         self.nrows() * self.ncols() != self.data.rows * self.data.cols
     }
+    /// Pointer to the underlying matrix data
     pub fn data(&self) -> Rc<MatrixData> {
         if self.is_subview() {
             Rc::new(MatrixData {
@@ -314,6 +388,8 @@ impl Matrix {
         }
     }
 
+    /// Generate a new matrix (with new underlying data) which is of a symmetric matrix copied
+    /// from either the lower triangular portion or the upper triangular portion of this matrix.
     pub fn to_symmetric(&self, method: SymmetrizeMethod) -> Matrix {
         assert!(self.is_square());
         let mut symm = self.clone();
@@ -372,11 +448,14 @@ impl fmt::Display for Matrix {
 }
 
 impl Clone for Matrix {
+    /// Copies all of the data represented by this matrix view into a new matrix (with new
+    /// underlying data).
     fn clone(&self) -> Matrix {
         Matrix::from_vec(self.iter().collect(), self.nrows(), self.ncols())
     }
 }
 
+/// Matrix iterator
 pub struct MatrixIter<'a> {
     mat: &'a Matrix,
     current_loc: (usize, usize),

@@ -2,10 +2,12 @@ use Matrix;
 use SubMatrix;
 
 impl Matrix {
+    /// Generate a new matrix by applying a function to each value in this matrix
     pub fn map<F>(&self, f: F) -> Matrix where F: Fn(f64) -> f64 {
         Matrix::from_vec(self.iter().map(f).collect(), self.nrows(), self.ncols())
     }
 
+    /// Generate a new row vector by applying a function to each column of this matrix
     pub fn map_columns<F>(&self, f: F) -> Matrix where F: Fn(Matrix) -> f64 {
         let mut v: Vec<f64> = Vec::new();
         for c in 0..self.ncols() {
@@ -14,6 +16,7 @@ impl Matrix {
         Matrix::from_vec(v, 1, self.ncols())
     }
 
+    /// Generate a new column vector by applying a function to each row of this matrix
     pub fn map_rows<F>(&self, f: F) -> Matrix where F: Fn(Matrix) -> f64 {
         let mut v: Vec<f64> = Vec::new();
         for r in 0..self.nrows() {
