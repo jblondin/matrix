@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/jblondin/matrix.svg?branch=master)](https://travis-ci.org/jblondin/matrix)
 
-A matrix library for Rust.
+A matrix library for Rust. Supports basic addition, subtraction, and multiplication operations, solving systems of equations (including underdetermined and overdetermined), decompositions, and norms (both vector and matrix). Wraps calls to BLAS / LAPACK.
 
 Features:
 * Matrix-scalar addition, subtraction, multiplication
