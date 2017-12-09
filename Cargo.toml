@@ -3,10 +3,7 @@ name = "wee-matrix"
 description = "A matrix library for Rust"
 version = "0.1.0"
 authors = ["Jamie Blondin <jblondin@gmail.com>"]
-
-license = "MIT"
 license-file = "LICENSE"
-
 repository = "https://github.com/jblondin/matrix"
 
 [dependencies]

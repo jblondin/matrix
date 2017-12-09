@@ -1,6 +1,17 @@
-// Example:
-// let a = mat![1, 2, 3, 4; 5, 6, 7, 8; 9, 10, 11, 12];
-// assert_eq!(a.dims(), (3, 4));
+/// Macro for easy creation of a matrix. Matrix elements are given in row-major format, separated
+/// by commas, with rows separated by semicolons.
+///
+/// ## Example
+/// ```
+/// # #[macro_use] extern crate wee_matrix;
+/// # fn main() {
+/// let a = mat![1, 2, 3, 4; 5, 6, 7, 8; 9, 10, 11, 12];
+/// assert_eq!(a.dims(), (3, 4));
+/// # }
+/// ```
+///
+/// ## Panics
+/// Will panic if number of columns are not equal for each given row.
 #[macro_export]
 macro_rules! mat {
     ($( $( $x:expr ),* );*) => {{
@@ -28,14 +39,12 @@ macro_rules! mat {
             }
         }
 
-        Matrix::from_vec(data, nrows, ncols)
+        $crate::Matrix::from_vec(data, nrows, ncols)
     }}
 }
 
 #[cfg(test)]
 mod tests {
-    use Matrix;
-
     #[test]
     fn test_macro() {
         let a = mat![1, 2, 3, 4; 5, 6, 7, 8];

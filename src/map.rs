@@ -28,8 +28,6 @@ impl Matrix {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_map() {
         let (m, n) = (3, 4);
